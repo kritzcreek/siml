@@ -1,0 +1,21 @@
+[package]
+name = "siml"
+version = "0.1.0"
+authors = ["kRITZCREEK <christoph.hegemann1337@gmail.com>"]
+edition = "2018"
+build = "build.rs"
+
+[dependencies]
+lalrpop-util = "0.16.3"
+regex = "1"
+
+[build-dependencies]
+lalrpop = "0.16.3"
+
+[lib]
+name = "siml"
+path = "src/lib.rs"
+
+[[bin]]
+name = "siml"
+path = "src/main.rs"
