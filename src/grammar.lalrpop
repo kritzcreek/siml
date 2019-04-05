@@ -1,10 +1,32 @@
 use std::str::FromStr;
+use crate::token::Token;
+use crate::ast::Expr;
 
 grammar;
 
-pub Term: i32 = {
-    <n:Num> => n,
-    "(" <t:Term> ")" => t,
-};
+extern {
+    // type Location = BytePos;
+    // type Error = Spanned<Error, BytePos>;
 
-Num: i32 = <s:r"[0-9]+"> => i32::from_str(s).unwrap();
+    enum Token {
+        "identifier" => Token::Ident(<String>),
+        "\\" => Token::Lambda,
+        "(" => Token::LParen,
+        ")" => Token::RParen,
+        "." => Token::Dot,
+    }
+}
+
+pub Expr: Expr = {
+    ExprAtom,
+    "\\" <binder: "identifier"> "." <body: Expr> =>
+      Expr::Lambda { binder: binder.to_string(), body: Box::new(body) },
+    <function: ExprAtom> <arguments: ExprAtom+> => {
+      Expr::App { func: Box::new(function), args: arguments.into_iter().collect() }
+    },
+}
+
+ExprAtom: Expr = {
+    <i:"identifier"> => Expr::Var(i.to_string()),
+    "(" <e:Expr> ")" => e,
+};
