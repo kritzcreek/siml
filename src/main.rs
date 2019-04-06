@@ -3,7 +3,7 @@ use siml::token;
 use siml::grammar;
 
 fn main() {
-    let input = "\\x. \\y. y x";
+    let input = "\\y. x y z";
     let lexer = token::Lexer::new(&input);
     /*
     lexer.for_each(|t| {

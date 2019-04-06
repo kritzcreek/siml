@@ -1,6 +1,6 @@
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expr {
-    App { func: Box<Expr>, args: Vec<Expr> },
+    App { func: Box<Expr>, arg: Box<Expr> },
     Lambda { binder: String, body: Box<Expr> },
     Var(String),
 }

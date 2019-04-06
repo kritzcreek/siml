@@ -1,13 +1,9 @@
-use std::str::FromStr;
 use crate::token::Token;
 use crate::ast::Expr;
 
 grammar;
 
 extern {
-    // type Location = BytePos;
-    // type Error = Spanned<Error, BytePos>;
-
     enum Token {
         "identifier" => Token::Ident(<String>),
         "\\" => Token::Lambda,
@@ -20,9 +16,11 @@ extern {
 pub Expr: Expr = {
     ExprAtom,
     "\\" <binder: "identifier"> "." <body: Expr> =>
-      Expr::Lambda { binder: binder.to_string(), body: Box::new(body) },
+        Expr::Lambda { binder: binder.to_string(), body: Box::new(body) },
     <function: ExprAtom> <arguments: ExprAtom+> => {
-      Expr::App { func: Box::new(function), args: arguments.into_iter().collect() }
+        arguments
+          .into_iter()
+          .fold(function, |acc, x| Expr::App { func: Box::new(acc), arg: Box::new(x) })
     },
 }
 
