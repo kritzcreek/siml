@@ -38,13 +38,6 @@ impl<'input> Lexer<'input> {
             }
         }
     }
-
-    pub fn drain(&mut self) {
-        while let Some(c) = self.next_char() {
-            println!("{:?}", c);
-        }
-        println!("Done")
-    }
 }
 
 fn is_ident_start(c: &char) -> bool {
