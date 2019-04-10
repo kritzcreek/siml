@@ -1,7 +1,7 @@
 extern crate siml;
 use siml::token;
 use siml::grammar;
-use siml::ast::Expr;
+use siml::expr::Expr;
 use siml::eval::Eval;
 
 fn parse_expr(input: &str) -> Expr {

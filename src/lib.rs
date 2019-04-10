@@ -1,4 +1,4 @@
 pub mod token;
-pub mod ast;
+pub mod expr;
 pub mod grammar;
 pub mod eval;
