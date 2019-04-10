@@ -44,23 +44,23 @@ impl Eval {
                 let free_vars: HashSet<&String> = replacement.free_vars();
                 if free_vars.contains(&binder) {
                     let new_binder = self.fresh_var(&binder);
-                    let tmp_body = self.substitute(body, &binder, &Expr::Var(new_binder.clone()));
-                    let new_body = self.substitute(&tmp_body, scrutinee, replacement);
+                    let renamed_body = self.substitute(body, &binder, &Expr::Var(new_binder.clone()));
+                    let new_body = self.substitute(&renamed_body, scrutinee, replacement);
                     Expr::Lambda {
-                        binder: new_binder.to_string(),
-                        body: Box::new(new_body.clone()),
+                        binder: new_binder,
+                        body: Box::new(new_body),
                     }
                 } else {
                     let new_body = self.substitute(body, scrutinee, replacement);
                     Expr::Lambda {
                         binder: binder.to_string(),
-                        body: Box::new(new_body.clone()),
+                        body: Box::new(new_body),
                     }
                 }
             }
             Expr::App { func, arg } => Expr::App {
-                func: Box::new(self.substitute(func, scrutinee, replacement).clone()),
-                arg: Box::new(self.substitute(arg, scrutinee, replacement).clone()),
+                func: Box::new(self.substitute(func, scrutinee, replacement)),
+                arg: Box::new(self.substitute(arg, scrutinee, replacement)),
             },
         }
     }
