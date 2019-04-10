@@ -14,10 +14,28 @@ impl Eval {
         match expr {
             Expr::App { func, arg } => match self.eval(func) {
                 Expr::Lambda { binder, body } => {
+                    let e1 = Expr::App {
+                        func: Box::new(Expr::Lambda {
+                            binder: binder.clone(),
+                            body: body.clone(),
+                        }),
+                        arg: arg.clone(),
+                    };
+                    println!("==> {} [eval func]", e1.print());
                     let arg = self.eval(arg);
-                    self.substitute(&body, &binder, &arg)
+                    let e2 = Expr::App {
+                        func: Box::new(Expr::Lambda {
+                            binder: binder.clone(),
+                            body: body.clone(),
+                        }),
+                        arg: Box::new(arg.clone()),
+                    };
+                    println!("==> {} [eval arg]", e2.print());
+                    let new_body = self.substitute(&body, &binder, &arg);
+                    println!("==> {} [eval subst]", &new_body.print());
+                    self.eval(&new_body)
                 }
-                e => e.clone(),
+                _ => expr.clone(),
             },
             _ => expr.clone(),
         }
@@ -44,7 +62,8 @@ impl Eval {
                 let free_vars: HashSet<&String> = replacement.free_vars();
                 if free_vars.contains(&binder) {
                     let new_binder = self.fresh_var(&binder);
-                    let renamed_body = self.substitute(body, &binder, &Expr::Var(new_binder.clone()));
+                    let renamed_body =
+                        self.substitute(body, &binder, &Expr::Var(new_binder.clone()));
                     let new_body = self.substitute(&renamed_body, scrutinee, replacement);
                     Expr::Lambda {
                         binder: new_binder,

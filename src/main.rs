@@ -30,5 +30,7 @@ fn main() {
     parse_expr("(x x) (y z)");
     run_expr("(\\x. x) y");
     run_expr("(\\y.(\\x. x y)) x");
+    run_expr("(\\y.(\\x. x y)) ((\\l. l) x)");
+    run_expr("(\\y.(\\x. x y) (\\x. x y)) x");
     run_expr("(\\x.(\\x. x y) x) k");
 }
