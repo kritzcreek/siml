@@ -3,6 +3,7 @@ use siml::token;
 use siml::grammar;
 use siml::expr::Expr;
 use siml::eval::Eval;
+use siml::term::Term;
 
 fn parse_expr(input: &str) -> Expr {
     let new_input = input.clone();
@@ -17,7 +18,15 @@ fn run_expr(input: &str) -> Expr {
     let res = grammar::ExprParser::new().parse(lexer).unwrap();
     let mut e = Eval::new();
     let eval_res = e.eval(&res);
-    println!("Finished: {}", eval_res.print());
+    println!("EFinished: {}", eval_res.print());
+    eval_res
+}
+
+fn run_term(input: &str) -> Term {
+    let lexer = token::Lexer::new(input);
+    let res = grammar::ExprParser::new().parse(lexer).unwrap();
+    let eval_res = Term::eval_expr(&res);
+    println!("TFinished: {}", eval_res.print());
     eval_res
 }
 
@@ -27,10 +36,18 @@ fn main() {
     parse_expr("\\y. x (\\z.z)");
     parse_expr("x (y z)");
     parse_expr("(x x) (y z)");
-    // run_expr("(\\x. x x) (\\x. x x)");
     run_expr("(\\x. x) y");
     run_expr("(\\y.(\\x. x y)) x");
     run_expr("(\\y.(\\x. x y)) ((\\l. l) x)");
     run_expr("(\\y.(\\x. x y) (\\x. x y)) x");
     run_expr("(\\x.(\\x. x y) x) k");
+
+    run_expr("(\\x. (\\y.(\\x. x y)) x)(\\l. l)");
+    run_term("(\\x. (\\y.(\\x. x y)) x)(\\l. l)");
+
+    run_expr("(\\x. (\\y.(\\x. x y)) x)(\\l. l)(\\k. k)");
+    run_term("(\\x. (\\y.(\\x. x y)) x)(\\l. l)(\\k. k)");
+
+    // run_expr("(\\x. x x) (\\x. x x)");
+    // run_term("(\\x. x x) (\\x. x x)");
 }
