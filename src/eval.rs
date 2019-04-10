@@ -23,7 +23,7 @@ impl Eval {
                             }),
                             arg: arg.clone(),
                         };
-                        println!("==> {} [eval func]", e1.print());
+                        println!("[fun] ==>\n  {} ", e1.print());
                         let arg = self.eval(arg);
                         let e2 = Expr::App {
                             func: Box::new(Expr::Lambda {
@@ -32,9 +32,9 @@ impl Eval {
                             }),
                             arg: Box::new(arg.clone()),
                         };
-                        println!("==> {} [eval arg]", e2.print());
+                        println!("[arg] ==>\n  {}", e2.print());
                         let new_body = self.substitute(&body, &binder, &arg);
-                        println!("==> {} [eval subst]", &new_body.print());
+                        println!("[sub] ==>\n  {}", &new_body.print());
                         self.eval(&new_body)
                     }
                     _ => expr.clone(),
