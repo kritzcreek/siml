@@ -15,10 +15,9 @@ fn parse_expr(input: &str) -> Expr {
 fn run_expr(input: &str) -> Expr {
     let lexer = token::Lexer::new(input);
     let res = grammar::ExprParser::new().parse(lexer).unwrap();
-    println!("Evaling: {}", &res.print());
     let mut e = Eval::new();
     let eval_res = e.eval(&res);
-    println!("Evaled: {}", eval_res.print());
+    println!("Finished: {}", eval_res.print());
     eval_res
 }
 

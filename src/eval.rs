@@ -12,31 +12,34 @@ impl Eval {
 
     pub fn eval(&mut self, expr: &Expr) -> Expr {
         match expr {
-            Expr::App { func, arg } => match self.eval(func) {
-                Expr::Lambda { binder, body } => {
-                    let e1 = Expr::App {
-                        func: Box::new(Expr::Lambda {
-                            binder: binder.clone(),
-                            body: body.clone(),
-                        }),
-                        arg: arg.clone(),
-                    };
-                    println!("==> {} [eval func]", e1.print());
-                    let arg = self.eval(arg);
-                    let e2 = Expr::App {
-                        func: Box::new(Expr::Lambda {
-                            binder: binder.clone(),
-                            body: body.clone(),
-                        }),
-                        arg: Box::new(arg.clone()),
-                    };
-                    println!("==> {} [eval arg]", e2.print());
-                    let new_body = self.substitute(&body, &binder, &arg);
-                    println!("==> {} [eval subst]", &new_body.print());
-                    self.eval(&new_body)
+            Expr::App { func, arg } => {
+                println!("Evaling: {}", &expr.print());
+                match self.eval(func) {
+                    Expr::Lambda { binder, body } => {
+                        let e1 = Expr::App {
+                            func: Box::new(Expr::Lambda {
+                                binder: binder.clone(),
+                                body: body.clone(),
+                            }),
+                            arg: arg.clone(),
+                        };
+                        println!("==> {} [eval func]", e1.print());
+                        let arg = self.eval(arg);
+                        let e2 = Expr::App {
+                            func: Box::new(Expr::Lambda {
+                                binder: binder.clone(),
+                                body: body.clone(),
+                            }),
+                            arg: Box::new(arg.clone()),
+                        };
+                        println!("==> {} [eval arg]", e2.print());
+                        let new_body = self.substitute(&body, &binder, &arg);
+                        println!("==> {} [eval subst]", &new_body.print());
+                        self.eval(&new_body)
+                    }
+                    _ => expr.clone(),
                 }
-                _ => expr.clone(),
-            },
+            }
             _ => expr.clone(),
         }
     }
