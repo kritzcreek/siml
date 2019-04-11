@@ -80,6 +80,8 @@ fn main() {
     println!();
     run_term("add ((\\x. x) 4) ((\\x. x) 4)");
     run_term("add (add 1 2) 3");
+    run_term("\\f. (\\x. \\y. x) 1 (f true)");
+    run_term("\\x. x x");
 
     // run_expr("(\\x. x x) (\\x. x x)");
     // run_term("(\\x. x x) (\\x. x x)");
