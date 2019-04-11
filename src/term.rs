@@ -1,4 +1,4 @@
-use crate::expr::Expr;
+use crate::expr::{Expr, Literal};
 use std::collections::HashMap;
 
 type Env = HashMap<String, Term>;
@@ -19,6 +19,7 @@ pub enum Term {
         body: Box<Term>,
         env: Env,
     },
+    Literal(Literal),
 }
 
 impl Term {
@@ -33,13 +34,13 @@ impl Term {
                 body: Box::new(Term::from_expr(body)),
             },
             Expr::Var(s) => Term::Var(s.clone()),
-            Expr::Literal(_) => panic!("unsupported")
+            Expr::Literal(lit) => Term::Literal(lit.clone()),
         }
     }
 
     pub fn eval_expr(expr: &Expr) -> Term {
         let mut initial_env = HashMap::new();
-        // initial_env.insert("defined".to_string(), Term::Var("k".to_string()));
+        initial_env.insert("pi".to_string(), Term::Literal(Literal::Int(3)));
         Term::eval(&initial_env, Term::from_expr(expr))
     }
 
@@ -55,6 +56,7 @@ impl Term {
                 env: env.clone(),
             },
             Term::Closure { .. } => term,
+            Term::Literal(_) => term,
             Term::App { func, arg } => match Term::eval(env, *func) {
                 Term::Closure {
                     binder,
@@ -79,6 +81,7 @@ impl Term {
     fn print_inner(&self, depth: u32) -> String {
         match self {
             Term::Var(s) => s.clone(),
+            Term::Literal(lit) => lit.print(),
             Term::Lambda { binder, body } => format!("(\\{}. {})", binder, body.print()),
             Term::Closure {
                 binder,

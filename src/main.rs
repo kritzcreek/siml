@@ -54,15 +54,21 @@ fn main() {
     run_expr("(\\y.(\\x. x y)) ((\\l. l) x)");
     run_expr("(\\y.(\\x. x y) (\\x. x y)) x");
     run_expr("(\\x.(\\x. x y) x) k");
-
+    println!();
     run_expr("(\\x. (\\y.(\\x. x y)) x)(\\l. l)");
     run_term("(\\x. (\\y.(\\x. x y)) x)(\\l. l)");
-
+    println!();
     run_expr("(\\x. (\\y.(\\x. x y)) x)(\\l. l)(\\k. k)");
     run_term("(\\x. (\\y.(\\x. x y)) x)(\\l. l)(\\k. k)");
-
-    run_expr("(\\x. x) (\\y. y) true");
-    run_expr("(\\x. x) (\\y. y) 100");
+    println!();
+    run_expr("(\\x. x) true");
+    run_term("(\\x. x) true");
+    println!();
+    run_expr("(\\x. x) 100");
+    run_term("(\\x. x) 100");
+    println!();
+    run_expr("(\\x. x) pi");
+    run_term("(\\x. x) pi");
 
     // run_expr("(\\x. x x) (\\x. x x)");
     // run_term("(\\x. x x) (\\x. x x)");
