@@ -8,6 +8,7 @@ use siml::expr::Expr;
 use siml::grammar;
 use siml::term::Term;
 use siml::token;
+use siml::repl::{repl};
 use simplelog::*;
 
 fn parse_expr(input: &str) -> Expr {
@@ -44,11 +45,7 @@ fn main() {
         time_format: None,
     };
     TermLogger::init(LevelFilter::Info, logger_conf).unwrap();
-    parse_expr("x");
-    parse_expr("\\y. x y z");
-    parse_expr("\\y. x (\\z.z)");
-    parse_expr("x (y z)");
-    parse_expr("(x x) (y z)");
+    // repl();
     run_expr("(\\x. x) y");
     run_expr("(\\y.(\\x. x y)) x");
     run_expr("(\\y.(\\x. x y)) ((\\l. l) x)");
@@ -71,6 +68,7 @@ fn main() {
     run_term("(\\x. x) pi");
     println!();
     run_term("add ((\\x. x) 4) ((\\x. x) 4)");
+    run_term("add (add 1 2) 3");
 
     // run_expr("(\\x. x x) (\\x. x x)");
     // run_term("(\\x. x x) (\\x. x x)");
