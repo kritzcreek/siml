@@ -8,6 +8,8 @@ build = "build.rs"
 [dependencies]
 lalrpop-util = "0.16.3"
 regex = "1"
+log = "*"
+simplelog = "^0.5.0"
 
 [build-dependencies]
 lalrpop = "0.16.3"

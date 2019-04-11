@@ -1,15 +1,20 @@
+#[macro_use]
+extern crate log;
 extern crate siml;
-use siml::token;
-use siml::grammar;
-use siml::expr::Expr;
+extern crate simplelog;
+
 use siml::eval::Eval;
+use siml::expr::Expr;
+use siml::grammar;
 use siml::term::Term;
+use siml::token;
+use simplelog::*;
 
 fn parse_expr(input: &str) -> Expr {
     let new_input = input.clone();
     let lexer = token::Lexer::new(input);
     let res = grammar::ExprParser::new().parse(lexer).unwrap();
-    println!("Parsed {} into {}", new_input, &res.print());
+    info!("Parsed {} into {}", new_input, &res.print());
     res
 }
 
@@ -17,8 +22,8 @@ fn run_expr(input: &str) -> Expr {
     let lexer = token::Lexer::new(input);
     let res = grammar::ExprParser::new().parse(lexer).unwrap();
     let mut e = Eval::new();
-    let eval_res = e.eval(&res);
-    println!("EFinished: {}", eval_res.print());
+    let eval_res = e.eval(res);
+    info!("EFinished: {}", eval_res.print());
     eval_res
 }
 
@@ -26,11 +31,19 @@ fn run_term(input: &str) -> Term {
     let lexer = token::Lexer::new(input);
     let res = grammar::ExprParser::new().parse(lexer).unwrap();
     let eval_res = Term::eval_expr(&res);
-    println!("TFinished: {}", eval_res.print());
+    info!("TFinished: {}", eval_res.print());
     eval_res
 }
 
 fn main() {
+    let logger_conf = Config {
+        time: None,
+        level: Some(Level::Error),
+        target: None,
+        location: None,
+        time_format: None,
+    };
+    TermLogger::init(LevelFilter::Info, logger_conf).unwrap();
     parse_expr("x");
     parse_expr("\\y. x y z");
     parse_expr("\\y. x (\\z.z)");
