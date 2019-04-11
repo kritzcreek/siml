@@ -22,6 +22,21 @@ pub enum Term {
     Literal(Literal),
 }
 
+fn initial_env() -> Env {
+    let mut env = HashMap::new();
+    let builtin_add: Term = Term::Closure {
+        binder: "#add1".to_string(),
+        env: HashMap::new(),
+        body: Box::new(Term::Lambda {
+            binder: "#add2".to_string(),
+            body: Box::new(Term::Var("#add".to_string())),
+        }),
+    };
+    env.insert("pi".to_string(), Term::Literal(Literal::Int(3)));
+    env.insert("add".to_string(), builtin_add);
+    env
+}
+
 impl Term {
     fn from_expr(expr: &Expr) -> Term {
         match expr {
@@ -39,16 +54,23 @@ impl Term {
     }
 
     pub fn eval_expr(expr: &Expr) -> Term {
-        let mut initial_env = HashMap::new();
-        initial_env.insert("pi".to_string(), Term::Literal(Literal::Int(3)));
-        Term::eval(&initial_env, Term::from_expr(expr))
+        Term::eval(&initial_env(), Term::from_expr(expr))
     }
 
     fn eval(env: &Env, term: Term) -> Term {
         match term {
-            Term::Var(s) => match env.get(&s) {
-                Some(t) => t.clone(),
-                None => panic!("Unknown variable: {}", s),
+            Term::Var(s) => match s.as_ref() {
+                "#add" => match (env.get("#add1"), env.get("#add2")) {
+                    (
+                        Some(Term::Literal(Literal::Int(i1))),
+                        Some(Term::Literal(Literal::Int(i2))),
+                    ) => Term::Literal(Literal::Int(i1 + i2)),
+                    (e1, e2) => panic!("Attempting to add non-numbers: {:?} {:?}", e1, e2),
+                },
+                _ => match env.get(&s) {
+                    Some(t) => t.clone(),
+                    None => panic!("Unknown variable: {}", s),
+                },
             },
             Term::Lambda { binder, body } => Term::Closure {
                 binder,

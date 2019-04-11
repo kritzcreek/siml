@@ -69,6 +69,8 @@ fn main() {
     println!();
     run_expr("(\\x. x) pi");
     run_term("(\\x. x) pi");
+    println!();
+    run_term("add ((\\x. x) 4) ((\\x. x) 4)");
 
     // run_expr("(\\x. x x) (\\x. x x)");
     // run_term("(\\x. x x) (\\x. x x)");
