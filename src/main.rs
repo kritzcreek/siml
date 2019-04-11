@@ -9,6 +9,7 @@ use siml::grammar;
 use siml::term::Term;
 use siml::token;
 use siml::repl::{repl};
+use siml::types;
 use simplelog::*;
 
 fn parse_expr(input: &str) -> Expr {
@@ -28,9 +29,19 @@ fn run_expr(input: &str) -> Expr {
     eval_res
 }
 
+fn print_ty_res(ty_res: Result<types::Type, types::TypeError>) -> String {
+    match ty_res {
+        Err(err) => err.print(),
+        Ok(ty) => ty.print(),
+    }
+}
+
 fn run_term(input: &str) -> Term {
     let lexer = token::Lexer::new(input);
     let res = grammar::ExprParser::new().parse(lexer).unwrap();
+    let mut type_checker = types::TypeChecker::new();
+    let ty_res = type_checker.infer_expr(&res);
+    info!("TInferred: {}", print_ty_res(ty_res));
     let eval_res = Term::eval_expr(&res);
     info!("TFinished: {}", eval_res.print());
     eval_res
