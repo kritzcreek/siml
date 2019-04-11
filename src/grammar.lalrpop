@@ -1,11 +1,13 @@
 use crate::token::Token;
-use crate::expr::Expr;
+use crate::expr::{Expr, Literal};
 
 grammar;
 
 extern {
     enum Token {
         "identifier" => Token::Ident(<String>),
+        "int_literal" => Token::IntLiteral(<i32>),
+        "bool_literal" => Token::BooleanLiteral(<bool>),
         "\\" => Token::Lambda,
         "(" => Token::LParen,
         ")" => Token::RParen,
@@ -26,5 +28,7 @@ pub Expr: Expr = {
 
 ExprAtom: Expr = {
     <i:"identifier"> => Expr::Var(i.to_string()),
+    "int_literal" => Expr::Literal(Literal::Int(<>)),
+    "bool_literal" => Expr::Literal(Literal::Bool(<>)),
     "(" <e:Expr> ")" => e,
 };

@@ -1,10 +1,26 @@
 use std::collections::HashSet;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Literal {
+    Int(i32),
+    Bool(bool),
+}
+
+impl Literal {
+    pub fn print(&self) -> String {
+        match self {
+            Literal::Int(i) => i.to_string(),
+            Literal::Bool(b) => b.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expr {
     App { func: Box<Expr>, arg: Box<Expr> },
     Lambda { binder: String, body: Box<Expr> },
     Var(String),
+    Literal(Literal),
 }
 
 impl Expr {
@@ -20,6 +36,7 @@ impl Expr {
                 depth > 0,
                 format!("{} {}", func.print_inner(depth), arg.print_inner(depth + 1)),
             ),
+            Expr::Literal(lit) => lit.print(),
         }
     }
 
@@ -36,6 +53,7 @@ impl Expr {
                 res
             }
             Expr::App { func, arg } => func.free_vars().union(&arg.free_vars()).cloned().collect(),
+            Expr::Literal(_) => HashSet::new(),
         }
     }
 }

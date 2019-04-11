@@ -1,5 +1,5 @@
-use std::str::{Chars};
 use std::iter::Peekable;
+use std::str::Chars;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Token {
@@ -8,6 +8,8 @@ pub enum Token {
     LParen,
     RParen,
     Ident(String),
+    IntLiteral(i32),
+    BooleanLiteral(bool),
 }
 
 pub struct Lexer<'input> {
@@ -16,8 +18,11 @@ pub struct Lexer<'input> {
 }
 
 impl<'input> Lexer<'input> {
-    pub fn new(input: &'input str) -> Lexer<'input>{
-        Lexer { input: input.chars().peekable(), pos: 0 }
+    pub fn new(input: &'input str) -> Lexer<'input> {
+        Lexer {
+            input: input.chars().peekable(),
+            pos: 0,
+        }
     }
 
     fn next_char(&mut self) -> Option<char> {
@@ -59,20 +64,22 @@ impl<'input> Iterator for Lexer<'input> {
 
     fn next(&mut self) -> Option<Token> {
         let token = match self.next_char() {
-            Some('\\') => {
-                Some(Token::Lambda)
-            },
-            Some('.') => {
-                Some(Token::Dot)
-            },
-            Some('(') => {
-                Some(Token::LParen)
-            },
-            Some(')') => {
-                Some(Token::RParen)
-            },
+            Some('\\') => Some(Token::Lambda),
+            Some('.') => Some(Token::Dot),
+            Some('(') => Some(Token::LParen),
+            Some(')') => Some(Token::RParen),
             Some(c) => {
-                if is_ident_start(&c) {
+                if c.is_digit(10) {
+                    let mut res = c.to_string();
+                    while let Some(c) = self.peek() {
+                        if c.is_digit(10) {
+                            res.push(self.next_char().unwrap())
+                        } else {
+                            break;
+                        }
+                    }
+                    Some(Token::IntLiteral(res.parse::<i32>().unwrap()))
+                } else if is_ident_start(&c) {
                     let mut res = c.to_string();
                     while let Some(c) = self.peek() {
                         if is_ident_member(c) {
@@ -81,14 +88,16 @@ impl<'input> Iterator for Lexer<'input> {
                             break;
                         }
                     }
-                    Some(Token::Ident(res))
+                    match res.as_str() {
+                        "true" => Some(Token::BooleanLiteral(true)),
+                        "false" => Some(Token::BooleanLiteral(false)),
+                        _ => Some(Token::Ident(res)),
+                    }
                 } else {
                     None
                 }
             }
-            None => {
-                None
-            }
+            None => None,
         };
         self.consume_whitespace();
         token

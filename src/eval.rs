@@ -84,6 +84,7 @@ impl Eval {
                 func: Box::new(self.substitute(func, scrutinee, replacement)),
                 arg: Box::new(self.substitute(arg, scrutinee, replacement)),
             },
+            Expr::Literal(_) => expr.clone(),
         }
     }
 }

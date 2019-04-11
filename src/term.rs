@@ -33,6 +33,7 @@ impl Term {
                 body: Box::new(Term::from_expr(body)),
             },
             Expr::Var(s) => Term::Var(s.clone()),
+            Expr::Literal(_) => panic!("unsupported")
         }
     }
 

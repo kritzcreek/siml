@@ -61,6 +61,9 @@ fn main() {
     run_expr("(\\x. (\\y.(\\x. x y)) x)(\\l. l)(\\k. k)");
     run_term("(\\x. (\\y.(\\x. x y)) x)(\\l. l)(\\k. k)");
 
+    run_expr("(\\x. x) (\\y. y) true");
+    run_expr("(\\x. x) (\\y. y) 100");
+
     // run_expr("(\\x. x x) (\\x. x x)");
     // run_term("(\\x. x x) (\\x. x x)");
 }
