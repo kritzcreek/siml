@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use crate::utils::{parens_if};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Literal {
@@ -55,13 +56,5 @@ impl Expr {
             Expr::App { func, arg } => func.free_vars().union(&arg.free_vars()).cloned().collect(),
             Expr::Literal(_) => HashSet::new(),
         }
-    }
-}
-
-fn parens_if(p: bool, s: String) -> String {
-    if p {
-        format!("({})", s)
-    } else {
-        s
     }
 }

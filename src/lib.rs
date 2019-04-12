@@ -8,3 +8,4 @@ pub mod eval;
 pub mod term;
 pub mod repl;
 pub mod types;
+mod utils;
