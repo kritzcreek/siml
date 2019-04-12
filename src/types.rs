@@ -1,6 +1,6 @@
 use crate::expr::{Expr, Literal};
-use std::collections::{HashMap, HashSet};
 use crate::utils::*;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Type {

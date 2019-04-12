@@ -6,9 +6,9 @@ extern crate simplelog;
 use siml::eval::Eval;
 use siml::expr::Expr;
 use siml::grammar;
+use siml::repl::repl;
 use siml::term::Term;
 use siml::token;
-use siml::repl::{repl};
 use siml::types;
 use simplelog::*;
 

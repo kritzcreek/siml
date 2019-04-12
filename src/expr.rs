@@ -1,5 +1,5 @@
+use crate::utils::parens_if;
 use std::collections::HashSet;
-use crate::utils::{parens_if};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Literal {

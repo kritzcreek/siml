@@ -1,11 +1,12 @@
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 extern crate rustyline;
 
-pub mod token;
+pub mod eval;
 pub mod expr;
 pub mod grammar;
-pub mod eval;
-pub mod term;
 pub mod repl;
+pub mod term;
+pub mod token;
 pub mod types;
 mod utils;

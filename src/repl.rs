@@ -1,9 +1,9 @@
+use crate::grammar;
+use crate::term::Term;
+use crate::token;
+use crate::types;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-use crate::token;
-use crate::grammar;
-use crate::types;
-use crate::term::Term;
 
 fn print_ty_res(ty_res: Result<types::Type, types::TypeError>) -> String {
     match ty_res {
@@ -35,18 +35,18 @@ pub fn repl() {
             Ok(line) => {
                 rl.add_history_entry(line.as_ref());
                 run_term(&line);
-            },
+            }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");
-                break
-            },
+                break;
+            }
             Err(ReadlineError::Eof) => {
                 println!("CTRL-D");
-                break
-            },
+                break;
+            }
             Err(err) => {
                 println!("Error: {:?}", err);
-                break
+                break;
             }
         }
     }

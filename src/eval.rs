@@ -13,7 +13,14 @@ impl Eval {
     pub fn eval(&mut self, expr: Expr) -> Expr {
         match expr {
             Expr::App { func, arg } => {
-                debug!("Evaling: {}", (Expr::App {func: func.clone(), arg: arg.clone()}).print());
+                debug!(
+                    "Evaling: {}",
+                    (Expr::App {
+                        func: func.clone(),
+                        arg: arg.clone()
+                    })
+                    .print()
+                );
                 match self.eval(*func) {
                     Expr::Lambda { binder, body } => {
                         let e1 = Expr::App {
@@ -37,7 +44,10 @@ impl Eval {
                         debug!("[sub] ==>\n  {}", &new_body.print());
                         self.eval(new_body)
                     }
-                    new_func => Expr::App { func: Box::new(new_func), arg },
+                    new_func => Expr::App {
+                        func: Box::new(new_func),
+                        arg,
+                    },
                 }
             }
             _ => expr,
