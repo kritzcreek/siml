@@ -42,7 +42,7 @@ fn run_term(input: &str) -> Term {
     let mut type_checker = types::TypeChecker::new();
     let ty_res = type_checker.infer_expr(&res);
     info!("TInferred: {}", print_ty_res(ty_res));
-    let eval_res = Term::eval_expr(&res);
+    let eval_res = Term::eval_expr(&res).unwrap();
     info!("TFinished: {}", eval_res.print());
     eval_res
 }
