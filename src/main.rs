@@ -12,12 +12,15 @@ use siml::token;
 use siml::types;
 use simplelog::*;
 
-fn parse_expr(input: &str) -> Expr {
-    let new_input = input.clone();
-    let lexer = token::Lexer::new(input);
-    let res = grammar::ExprParser::new().parse(lexer).unwrap();
-    info!("Parsed {} into {}", new_input, &res.print());
-    res
+fn setup_logger() {
+    let logger_conf = Config {
+        time: None,
+        level: Some(Level::Error),
+        target: None,
+        location: None,
+        time_format: None,
+    };
+    TermLogger::init(LevelFilter::Info, logger_conf).unwrap();
 }
 
 fn run_expr(input: &str) -> Expr {
@@ -47,42 +50,39 @@ fn run_term(input: &str) -> Term {
     eval_res
 }
 
-fn main() {
-    let logger_conf = Config {
-        time: None,
-        level: Some(Level::Error),
-        target: None,
-        location: None,
-        time_format: None,
-    };
-    TermLogger::init(LevelFilter::Info, logger_conf).unwrap();
-    repl();
-    // run_expr("(\\x. x) y");
-    // run_expr("(\\y.(\\x. x y)) x");
-    // run_expr("(\\y.(\\x. x y)) ((\\l. l) x)");
-    // run_expr("(\\y.(\\x. x y) (\\x. x y)) x");
-    // run_expr("(\\x.(\\x. x y) x) k");
-    // println!();
-    // run_expr("(\\x. (\\y.(\\x. x y)) x)(\\l. l)");
-    // run_term("(\\x. (\\y.(\\x. x y)) x)(\\l. l)");
-    // println!();
-    // run_expr("(\\x. (\\y.(\\x. x y)) x)(\\l. l)(\\k. k)");
-    // run_term("(\\x. (\\y.(\\x. x y)) x)(\\l. l)(\\k. k)");
-    // println!();
-    // run_expr("(\\x. x) true");
-    // run_term("(\\x. x) true");
-    // println!();
-    // run_expr("(\\x. x) 100");
-    // run_term("(\\x. x) 100");
-    // println!();
-    // run_expr("(\\x. x) pi");
-    // run_term("(\\x. x) pi");
-    // println!();
-    // run_term("add ((\\x. x) 4) ((\\x. x) 4)");
-    // run_term("add (add 1 2) 3");
-    // run_term("\\f. (\\x. \\y. x) 1 (f true)");
-    // run_term("\\x. x x");
+fn batch() {
+    run_expr("(\\x. x) y");
+    run_expr("(\\y.(\\x. x y)) x");
+    run_expr("(\\y.(\\x. x y)) ((\\l. l) x)");
+    run_expr("(\\y.(\\x. x y) (\\x. x y)) x");
+    run_expr("(\\x.(\\x. x y) x) k");
+    println!();
+    run_expr("(\\x. (\\y.(\\x. x y)) x)(\\l. l)");
+    run_term("(\\x. (\\y.(\\x. x y)) x)(\\l. l)");
+    println!();
+    run_expr("(\\x. (\\y.(\\x. x y)) x)(\\l. l)(\\k. k)");
+    run_term("(\\x. (\\y.(\\x. x y)) x)(\\l. l)(\\k. k)");
+    println!();
+    run_expr("(\\x. x) true");
+    run_term("(\\x. x) true");
+    println!();
+    run_expr("(\\x. x) 100");
+    run_term("(\\x. x) 100");
+    println!();
+    run_expr("(\\x. x) pi");
+    run_term("(\\x. x) pi");
+    println!();
+    run_term("add ((\\x. x) 4) ((\\x. x) 4)");
+    run_term("add (add 1 2) 3");
+    run_term("\\f. (\\x. \\y. x) 1 (f true)");
+    run_term("\\x. x x");
 
     // run_expr("(\\x. x x) (\\x. x x)");
     // run_term("(\\x. x x) (\\x. x x)");
+}
+
+fn main() {
+    setup_logger();
+    batch();
+    repl();
 }
