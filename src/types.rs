@@ -264,13 +264,14 @@ impl TypeChecker {
             Expr::Ann { expr, ty } => {
                 let (ty_inf, s) = self.infer(env, expr)?;
                 match TypeChecker::unify(ty.clone(), ty_inf.clone()) {
-                    Ok(s1) => Ok((TypeChecker::apply_subst(&s1, ty_inf), TypeChecker::compose_subst(s, s1))),
-                    Err(_) => {
-                    Err(TypeError::AnnotationMismatch {
+                    Ok(s1) => Ok((
+                        TypeChecker::apply_subst(&s1, ty_inf),
+                        TypeChecker::compose_subst(s, s1),
+                    )),
+                    Err(_) => Err(TypeError::AnnotationMismatch {
                         ty: ty_inf,
                         ann: ty.clone(),
-                    })
-                    }
+                    }),
                 }
             }
             Expr::Literal(Literal::Int(_)) => Ok((Type::Int, HashMap::new())),
