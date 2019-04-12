@@ -1,3 +1,4 @@
+use crate::types::Type;
 use crate::utils::parens_if;
 use std::collections::HashSet;
 
@@ -22,6 +23,7 @@ pub enum Expr {
     Lambda { binder: String, body: Box<Expr> },
     Var(String),
     Literal(Literal),
+    Ann { expr: Box<Expr>, ty: Type },
 }
 
 impl Expr {
@@ -38,6 +40,7 @@ impl Expr {
                 format!("{} {}", func.print_inner(depth), arg.print_inner(depth + 1)),
             ),
             Expr::Literal(lit) => lit.print(),
+            Expr::Ann { expr, ty } => format!("({} : {})", expr.print(), ty.print()),
         }
     }
 
@@ -55,6 +58,7 @@ impl Expr {
             }
             Expr::App { func, arg } => func.free_vars().union(&arg.free_vars()).cloned().collect(),
             Expr::Literal(_) => HashSet::new(),
+            Expr::Ann { expr, ty: _ } => expr.free_vars(),
         }
     }
 }
