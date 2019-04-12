@@ -65,6 +65,7 @@ impl Term {
             },
             Expr::Var(s) => Term::Var(s.clone()),
             Expr::Literal(lit) => Term::Literal(lit.clone()),
+            Expr::Ann { expr, ty: _ } => Term::from_expr(expr),
         }
     }
 

@@ -50,6 +50,7 @@ impl Eval {
                     },
                 }
             }
+            Expr::Ann { expr, ty: _ } => self.eval(*expr),
             _ => expr,
         }
     }
@@ -93,6 +94,10 @@ impl Eval {
             Expr::App { func, arg } => Expr::App {
                 func: Box::new(self.substitute(func, scrutinee, replacement)),
                 arg: Box::new(self.substitute(arg, scrutinee, replacement)),
+            },
+            Expr::Ann { expr, ty } => Expr::Ann {
+                ty: ty.clone(),
+                expr: Box::new(self.substitute(expr, scrutinee, replacement)),
             },
             Expr::Literal(_) => expr.clone(),
         }

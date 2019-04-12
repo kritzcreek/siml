@@ -7,6 +7,8 @@ pub enum Token {
     Dot,
     LParen,
     RParen,
+    Colon,
+    Arrow,
     Ident(String),
     IntLiteral(i32),
     BooleanLiteral(bool),
@@ -47,7 +49,7 @@ impl<'input> Lexer<'input> {
 
 fn is_ident_start(c: &char) -> bool {
     match c {
-        'a'...'z' => true,
+        'a'...'z' | 'A'...'Z' => true,
         _ => false,
     }
 }
@@ -68,6 +70,15 @@ impl<'input> Iterator for Lexer<'input> {
             Some('.') => Some(Token::Dot),
             Some('(') => Some(Token::LParen),
             Some(')') => Some(Token::RParen),
+            Some(':') => Some(Token::Colon),
+            Some('-') => {
+                if self.peek() == Some(&'>') {
+                    self.next();
+                    Some(Token::Arrow)
+                } else {
+                    panic!("Failed to parse an arrow.")
+                }
+            }
             Some(c) => {
                 if c.is_digit(10) {
                     let mut res = c.to_string();

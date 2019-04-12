@@ -1,5 +1,6 @@
 use crate::token::Token;
 use crate::expr::{Expr, Literal};
+use crate::types::{Type};
 
 grammar;
 
@@ -12,6 +13,8 @@ extern {
         "(" => Token::LParen,
         ")" => Token::RParen,
         "." => Token::Dot,
+        "->" => Token::Arrow,
+        ":" => Token::Colon,
     }
 }
 
@@ -30,5 +33,24 @@ ExprAtom: Expr = {
     <i:"identifier"> => Expr::Var(i.to_string()),
     "int_literal" => Expr::Literal(Literal::Int(<>)),
     "bool_literal" => Expr::Literal(Literal::Bool(<>)),
+    "(" <e:Expr> ":" <t:Type> ")" => Expr::Ann{ ty: t, expr: Box::new(e) },
     "(" <e:Expr> ")" => e,
 };
+
+pub Type: Type = {
+    <arg: TypeAtom> "->" <result: Type> => {
+        Type::Fun {arg: Box::new(arg), result: Box::new(result)}
+    },
+    TypeAtom
+}
+
+TypeAtom: Type = {
+    "(" <t:Type> ")" => t,
+    <i:"identifier"> => {
+        match i.as_ref() {
+          "Int" => Type::Int,
+          "Bool" => Type::Bool,
+          _ => Type::Var(i),
+        }
+    }
+}

@@ -58,6 +58,7 @@ pub enum TypeError {
     Unification(Type, Type),
     UnboundName(String),
     OccursCheck(String),
+    AnnotationMismatch { ann: Type, ty: Type },
 }
 
 impl TypeError {
@@ -68,6 +69,11 @@ impl TypeError {
             }
             TypeError::UnboundName(name) => format!("Unbound name: {} ", name),
             TypeError::OccursCheck(name) => format!("The occurs check failed for: {}", name),
+            TypeError::AnnotationMismatch { ann, ty } => format!(
+                "The type: {} failed to check against the annotation: {}",
+                ty.print(),
+                ann.print()
+            ),
         }
     }
 }
@@ -254,6 +260,18 @@ impl TypeChecker {
                 let ty_res = TypeChecker::apply_subst(&s3, ty_res);
                 let s = TypeChecker::compose_subst(TypeChecker::compose_subst(s1, s2), s3);
                 Ok((ty_res, s))
+            }
+            Expr::Ann { expr, ty } => {
+                let (ty_inf, s) = self.infer(env, expr)?;
+                match TypeChecker::unify(ty.clone(), ty_inf.clone()) {
+                    Ok(s1) => Ok((TypeChecker::apply_subst(&s1, ty_inf), TypeChecker::compose_subst(s, s1))),
+                    Err(_) => {
+                    Err(TypeError::AnnotationMismatch {
+                        ty: ty_inf,
+                        ann: ty.clone(),
+                    })
+                    }
+                }
             }
             Expr::Literal(Literal::Int(_)) => Ok((Type::Int, HashMap::new())),
             Expr::Literal(Literal::Bool(_)) => Ok((Type::Bool, HashMap::new())),
