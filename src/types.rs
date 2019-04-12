@@ -1,5 +1,6 @@
 use crate::expr::{Expr, Literal};
 use std::collections::{HashMap, HashSet};
+use crate::utils::*;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Type {
@@ -17,11 +18,22 @@ pub struct Scheme {
 
 impl Type {
     pub fn print(&self) -> String {
+        self.print_inner(0)
+    }
+
+    fn print_inner(&self, depth: u32) -> String {
         match self {
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Var(s) => s.clone(),
-            Type::Fun { arg, result } => format!("({}) -> {}", arg.print(), result.print()),
+            Type::Fun { arg, result } => parens_if(
+                depth > 0,
+                format!(
+                    "{} -> {}",
+                    arg.print_inner(depth + 1),
+                    result.print_inner(0)
+                ),
+            ),
         }
     }
 
@@ -118,7 +130,10 @@ impl TypeChecker {
     fn compose_subst(subst1: Substitution, subst2: Substitution) -> Substitution {
         let mut res = subst1.clone();
         for (var, ty) in subst2.clone().iter() {
-            res.insert(var.to_string(), TypeChecker::apply_subst(&subst1, ty.clone()));
+            res.insert(
+                var.to_string(),
+                TypeChecker::apply_subst(&subst1, ty.clone()),
+            );
         }
         res
     }
