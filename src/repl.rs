@@ -35,6 +35,18 @@ fn run_term(input: &str) {
     }
 }
 
+fn run_type(input: &str) {
+    let lexer = token::Lexer::new(input);
+    let res = grammar::TypeParser::new().parse(lexer);
+    match res {
+        Err(err) => error!("Parse failure: {:?}", err),
+        Ok(res) => {
+            info!("{}", res.print());
+            info!("Free vars: {:#?}", res.free_vars());
+        }
+    }
+}
+
 pub fn repl() {
     // `()` can be used when no completer is required
     let mut rl = Editor::<()>::new();
@@ -47,7 +59,11 @@ pub fn repl() {
         match readline {
             Ok(line) => {
                 rl.add_history_entry(line.as_ref());
-                run_term(&line);
+                if line.starts_with(":ty") {
+                    run_type(line.trim_start_matches(":ty "));
+                } else {
+                    run_term(&line);
+                }
             }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");

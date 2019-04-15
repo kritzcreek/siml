@@ -77,7 +77,7 @@ fn batch() {
     run_term("\\f. (\\x. \\y. x) 1 (f true)");
     run_term("\\x. x x");
 
-    run_term("(\\x. (x : Int)) true");
+    run_term("(\\x. (x: Int)) true");
 
     // run_expr("(\\x. x x) (\\x. x x)");
     // run_term("(\\x. x x) (\\x. x x)");

@@ -9,6 +9,7 @@ pub enum Token {
     RParen,
     Colon,
     Arrow,
+    Forall,
     Ident(String),
     IntLiteral(i32),
     BooleanLiteral(bool),
@@ -102,6 +103,7 @@ impl<'input> Iterator for Lexer<'input> {
                     match res.as_str() {
                         "true" => Some(Token::BooleanLiteral(true)),
                         "false" => Some(Token::BooleanLiteral(false)),
+                        "forall" => Some(Token::Forall),
                         _ => Some(Token::Ident(res)),
                     }
                 } else {
@@ -111,6 +113,7 @@ impl<'input> Iterator for Lexer<'input> {
             None => None,
         };
         self.consume_whitespace();
+        debug!("Token: {:?}", &token);
         token
     }
 }

@@ -7,6 +7,7 @@ pub enum Type {
     Int,
     Bool,
     Var(String),
+    Poly { vars: Vec<String>, ty: Box<Type> },
     Fun { arg: Box<Type>, result: Box<Type> },
 }
 
@@ -26,6 +27,12 @@ impl Type {
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Var(s) => s.clone(),
+            Type::Poly { vars, ty } => {
+                let vars_printed: String = vars
+                    .iter()
+                    .fold("".to_string(), |acc, var| format!("{} {}", acc, var));
+                format!("∀{}. {}", vars_printed, ty.print())
+            }
             Type::Fun { arg, result } => parens_if(
                 depth > 0,
                 format!(
@@ -46,6 +53,13 @@ impl Type {
             Type::Fun { arg, result } => {
                 res.extend(arg.free_vars());
                 res.extend(result.free_vars());
+            }
+            Type::Poly { vars, ty } => {
+                let mut free_in_ty = ty.free_vars();
+                vars.iter().for_each(|var| {
+                    free_in_ty.remove(var);
+                });
+                res.extend(free_in_ty);
             }
             _ => {}
         }

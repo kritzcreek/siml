@@ -9,6 +9,7 @@ extern {
         "identifier" => Token::Ident(<String>),
         "int_literal" => Token::IntLiteral(<i32>),
         "bool_literal" => Token::BooleanLiteral(<bool>),
+        "forall" => Token::Forall,
         "\\" => Token::Lambda,
         "(" => Token::LParen,
         ")" => Token::RParen,
@@ -29,6 +30,7 @@ pub Expr: Expr = {
     },
 }
 
+
 ExprAtom: Expr = {
     <i:"identifier"> => Expr::Var(i.to_string()),
     "int_literal" => Expr::Literal(Literal::Int(<>)),
@@ -38,6 +40,9 @@ ExprAtom: Expr = {
 };
 
 pub Type: Type = {
+    "forall" <vars: "identifier"+> "." <ty: Type> => {
+        Type::Poly {vars, ty: Box::new(ty)}
+    },
     <arg: TypeAtom> "->" <result: Type> => {
         Type::Fun {arg: Box::new(arg), result: Box::new(result)}
     },
