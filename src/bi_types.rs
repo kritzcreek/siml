@@ -176,6 +176,10 @@ struct Context {
 }
 
 impl Context {
+    pub fn new(elems: Vec<ContextElem>) -> Context {
+        Context { elems }
+    }
+
     fn split_at(&self, elem: &ContextElem) -> Option<(&[ContextElem], &[ContextElem])> {
         let pos = self.elems.iter().position(|x| x == elem);
         pos.map(|pos| self.elems.split_at(pos))
@@ -190,20 +194,58 @@ impl Context {
         self.elems.push(elem)
     }
 
+    fn pop(&mut self) -> Option<ContextElem> {
+        self.elems.pop()
+    }
+
     fn push_elems(&mut self, elems: Vec<ContextElem>) {
         self.elems.extend(elems.into_iter())
     }
 
     fn drop_marker(&mut self, marker: ContextElem) {
-        let (before_marker, _) = self.split_at(&marker).expect("dropping non-existent marker");
+        let (before_marker, _) = self
+            .split_at(&marker)
+            .expect("dropping non-existent marker");
         self.elems = before_marker.to_vec();
     }
 
     fn break_marker(&self, marker: ContextElem) -> (Vec<ContextElem>, Vec<ContextElem>) {
-        let (before_marker, after_marker) = self.split_at(&marker).expect("breaking non-existent marker");
-        (before_marker.to_vec(), after_marker.split_last().unwrap().1.to_vec())
+        let (before_marker, after_marker) = self
+            .split_at(&marker)
+            .expect("breaking non-existent marker");
+        (
+            before_marker.to_vec(),
+            after_marker.split_first().unwrap().1.to_vec(),
+        )
     }
 
+    fn markers(&self) -> Vec<String> {
+        self.elems
+            .iter()
+            .filter_map(|x| match x {
+                ContextElem::Marker(m) => Some(m.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+    fn vars(&self) -> Vec<String> {
+        self.elems
+            .iter()
+            .filter_map(|x| match x {
+                ContextElem::Anno(v, _) => Some(v.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+    fn foralls(&self) -> Vec<String> {
+        self.elems
+            .iter()
+            .filter_map(|x| match x {
+                ContextElem::Var(v) => Some(v.clone()),
+                _ => None,
+            })
+            .collect()
+    }
     fn existentials(&self) -> Vec<String> {
         self.elems
             .iter()
@@ -223,7 +265,7 @@ impl Context {
                 } else {
                     None
                 }
-            },
+            }
             _ => None,
         })
     }
@@ -236,9 +278,31 @@ impl Context {
                 } else {
                     None
                 }
-            },
+            }
             _ => None,
         })
+    }
+
+    /// solve (ΓL,α^,ΓR) α τ = (ΓL,α = τ,ΓR)
+    fn solve(&self, ex: String, ty: Type) -> Option<Context> {
+        let (gamma_l, gamma_r) = self.break_marker(ContextElem::ExVar(ex.clone()));
+        let mut ctx = Context::new(gamma_l);
+        if ctx.wf_type(&ty) {
+            ctx.push(ContextElem::ExVarSolved(ex, ty));
+            ctx.push_elems(gamma_r);
+            Some(ctx)
+        } else {
+            None
+        }
+    }
+
+    /// existentials_ordered Γ α β = True <=> Γ[α^][β^]
+    fn existentials_ordered(&self, ex1: String, ex2: String) -> bool {
+        let (gamma_l, _) = self.break_marker(ContextElem::ExVar(ex2));
+        // TODO: Do we also need to find solved ExVars here? I don't
+        // think so because this is only used to assign two unsolved
+        // existentials to one another
+        gamma_l.contains(&ContextElem::ExVar(ex1))
     }
 
     fn u_var_wf(&self, var: &String) -> bool {
@@ -278,6 +342,33 @@ impl Context {
             Type::Fun { arg, result } => self.arrow_wf(arg, result),
             Type::Var(var) => self.u_var_wf(var),
             Type::Existential(var) => self.evar_wf(var) || self.solved_evar_wf(var),
+        }
+    }
+
+    fn wf(&self) -> bool {
+        self.clone().wf_mut()
+    }
+
+    fn wf_mut(&mut self) -> bool {
+        if let Some(el) = self.pop() {
+            match el {
+                // UvarCtx
+                ContextElem::Var(v) => !self.foralls().contains(&v),
+                // VarCtx
+                ContextElem::Anno(v, ty) => !self.vars().contains(&v) && self.wf_type(&ty),
+                //EvarCtx
+                ContextElem::ExVar(ex) => !self.existentials().contains(&ex),
+                //SolvedEvarCtx
+                ContextElem::ExVarSolved(ex, ty) => {
+                    !self.existentials().contains(&ex) && self.wf_type(&ty)
+                }
+                // MarkerCtx
+                ContextElem::Marker(m) => {
+                    !self.markers().contains(&m) && !self.existentials().contains(&m)
+                }
+            }
+        } else {
+            true
         }
     }
 
@@ -339,5 +430,21 @@ mod tests {
         let mut ty = Type::fun(Type::var("a"), Type::var("b"));
         ty.subst_mut(&"a".to_string(), &Type::Int);
         assert_eq!(ty, Type::fun(Type::Int, Type::var("b")));
+    }
+
+    #[test]
+    fn solve_ex() {
+        let ctx = Context::new(vec![
+            ContextElem::Var("x".to_string()),
+            ContextElem::ExVar("alpha".to_string()),
+            ContextElem::Anno("var".to_string(), Type::Int),
+        ]);
+        let expected = Context::new(vec![
+            ContextElem::Var("x".to_string()),
+            ContextElem::ExVarSolved("alpha".to_string(), Type::Var("x".to_string())),
+            ContextElem::Anno("var".to_string(), Type::Int),
+        ]);
+        let new_ctx = ctx.solve("alpha".to_string(), Type::Var("x".to_string()));
+        assert_eq!(new_ctx, Some(expected));
     }
 }
