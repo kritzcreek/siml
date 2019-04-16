@@ -1,4 +1,4 @@
-use crate::types::Type;
+use crate::bi_types::Type;
 use crate::utils::parens_if;
 use std::collections::HashSet;
 

@@ -1,3 +1,4 @@
+use crate::bi_types;
 use crate::expr::{Expr, Literal};
 use crate::utils::*;
 use std::collections::{HashMap, HashSet};
@@ -7,7 +8,6 @@ pub enum Type {
     Int,
     Bool,
     Var(String),
-    Poly { vars: Vec<String>, ty: Box<Type> },
     Fun { arg: Box<Type>, result: Box<Type> },
 }
 
@@ -18,6 +18,19 @@ pub struct Scheme {
 }
 
 impl Type {
+    pub fn from_bi_type(ty: bi_types::Type) -> Self {
+        match ty {
+            bi_types::Type::Int => Type::Int,
+            bi_types::Type::Bool => Type::Bool,
+            bi_types::Type::Var(v) => Type::Var(v),
+            bi_types::Type::Fun { arg, result } => Type::Fun {
+                arg: Box::new(Type::from_bi_type(*arg)),
+                result: Box::new(Type::from_bi_type(*result)),
+            },
+            t => panic!("Type can't handle {}", t.print()),
+        }
+    }
+
     pub fn print(&self) -> String {
         self.print_inner(0)
     }
@@ -27,12 +40,6 @@ impl Type {
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Var(s) => s.clone(),
-            Type::Poly { vars, ty } => {
-                let vars_printed: String = vars
-                    .iter()
-                    .fold("".to_string(), |acc, var| format!("{} {}", acc, var));
-                format!("∀{}. {}", vars_printed, ty.print())
-            }
             Type::Fun { arg, result } => parens_if(
                 depth > 0,
                 format!(
@@ -53,13 +60,6 @@ impl Type {
             Type::Fun { arg, result } => {
                 res.extend(arg.free_vars());
                 res.extend(result.free_vars());
-            }
-            Type::Poly { vars, ty } => {
-                let mut free_in_ty = ty.free_vars();
-                vars.iter().for_each(|var| {
-                    free_in_ty.remove(var);
-                });
-                res.extend(free_in_ty);
             }
             _ => {}
         }
@@ -276,6 +276,7 @@ impl TypeChecker {
                 Ok((ty_res, s))
             }
             Expr::Ann { expr, ty } => {
+                let ty = Type::from_bi_type(ty.clone());
                 let (ty_inf, s) = self.infer(env, expr)?;
                 match TypeChecker::unify(ty.clone(), ty_inf.clone()) {
                     Ok(s1) => Ok((

@@ -1,6 +1,7 @@
 use crate::token::Token;
 use crate::expr::{Expr, Literal};
 use crate::types::{Type};
+use crate::bi_types;
 
 grammar;
 
@@ -35,27 +36,33 @@ ExprAtom: Expr = {
     <i:"identifier"> => Expr::Var(i.to_string()),
     "int_literal" => Expr::Literal(Literal::Int(<>)),
     "bool_literal" => Expr::Literal(Literal::Bool(<>)),
-    "(" <e:Expr> ":" <t:Type> ")" => Expr::Ann{ ty: t, expr: Box::new(e) },
+    "(" <e:Expr> ":" <t:BiType> ")" => Expr::Ann{ ty: t, expr: Box::new(e) },
     "(" <e:Expr> ")" => e,
 };
 
 pub Type: Type = {
-    "forall" <vars: "identifier"+> "." <ty: Type> => {
-        Type::Poly {vars, ty: Box::new(ty)}
+    BiType => {
+        Type::from_bi_type(<>)
+    }
+}
+
+pub BiType: bi_types::Type = {
+    "forall" <vars: "identifier"+> "." <ty: BiType> => {
+        bi_types::Type::Poly {vars, ty: Box::new(ty)}
     },
-    <arg: TypeAtom> "->" <result: Type> => {
-        Type::Fun {arg: Box::new(arg), result: Box::new(result)}
+    <arg: TypeAtom> "->" <result: BiType> => {
+        bi_types::Type::Fun {arg: Box::new(arg), result: Box::new(result)}
     },
     TypeAtom
 }
 
-TypeAtom: Type = {
-    "(" <t:Type> ")" => t,
+TypeAtom: bi_types::Type = {
+    "(" <t:BiType> ")" => t,
     <i:"identifier"> => {
         match i.as_ref() {
-          "Int" => Type::Int,
-          "Bool" => Type::Bool,
-          _ => Type::Var(i),
+          "Int" => bi_types::Type::Int,
+          "Bool" => bi_types::Type::Bool,
+          _ => bi_types::Type::Var(i),
         }
     }
 }

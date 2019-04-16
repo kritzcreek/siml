@@ -1,3 +1,4 @@
+use crate::bi_types;
 use crate::grammar;
 use crate::term;
 use crate::term::Term;
