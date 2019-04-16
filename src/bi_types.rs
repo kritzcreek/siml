@@ -241,7 +241,7 @@ impl Context {
         self.elems
             .iter()
             .filter_map(|x| match x {
-                ContextElem::Var(v) => Some(v.clone()),
+                ContextElem::Universal(v) => Some(v.clone()),
                 _ => None,
             })
             .collect()
@@ -306,7 +306,7 @@ impl Context {
     }
 
     fn u_var_wf(&self, var: &String) -> bool {
-        self.elem(&ContextElem::Var(var.clone()))
+        self.elem(&ContextElem::Universal(var.clone()))
     }
 
     fn arrow_wf(&self, a: &Type, b: &Type) -> bool {
@@ -315,7 +315,7 @@ impl Context {
 
     fn forall_wf(&self, vars: &Vec<String>, ty: &Type) -> bool {
         let mut tmp_elems = self.elems.clone();
-        tmp_elems.extend(vars.iter().map(|v| ContextElem::Var(v.clone())));
+        tmp_elems.extend(vars.iter().map(|v| ContextElem::Universal(v.clone())));
         let tmp_ctx = Context { elems: tmp_elems };
 
         tmp_ctx.wf_type(ty)
@@ -353,7 +353,7 @@ impl Context {
         if let Some(el) = self.pop() {
             match el {
                 // UvarCtx
-                ContextElem::Var(v) => !self.foralls().contains(&v),
+                ContextElem::Universal(v) => !self.foralls().contains(&v),
                 // VarCtx
                 ContextElem::Anno(v, ty) => !self.vars().contains(&v) && self.wf_type(&ty),
                 //EvarCtx
@@ -377,7 +377,7 @@ impl Context {
             Type::Bool => Some(Type::Bool),
             Type::Int => Some(Type::Int),
             Type::Var(v) => {
-                if self.elem(&ContextElem::Var(v.clone())) {
+                if self.elem(&ContextElem::Universal(v.clone())) {
                     Some(Type::Var(v.clone()))
                 } else {
                     None
@@ -391,7 +391,7 @@ impl Context {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum ContextElem {
-    Var(String),
+    Universal(String),
     ExVar(String),
     ExVarSolved(String, Type),
     Marker(String),
@@ -435,12 +435,12 @@ mod tests {
     #[test]
     fn solve_ex() {
         let ctx = Context::new(vec![
-            ContextElem::Var("x".to_string()),
+            ContextElem::Universal("x".to_string()),
             ContextElem::ExVar("alpha".to_string()),
             ContextElem::Anno("var".to_string(), Type::Int),
         ]);
         let expected = Context::new(vec![
-            ContextElem::Var("x".to_string()),
+            ContextElem::Universal("x".to_string()),
             ContextElem::ExVarSolved("alpha".to_string(), Type::Var("x".to_string())),
             ContextElem::Anno("var".to_string(), Type::Int),
         ]);
