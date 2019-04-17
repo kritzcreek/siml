@@ -82,8 +82,10 @@ pub fn repl() {
                 rl.add_history_entry(line.as_ref());
                 if line.starts_with(":ty") {
                     run_type(line.trim_start_matches(":ty "));
+                } else if line.starts_with(":bi") {
+                    run_bi_type(line.trim_start_matches(":bi "));
                 } else {
-                    run_bi_type(&line);
+                    run_term(&line);
                 }
             }
             Err(ReadlineError::Interrupted) => {

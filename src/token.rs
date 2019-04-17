@@ -22,10 +22,12 @@ pub struct Lexer<'input> {
 
 impl<'input> Lexer<'input> {
     pub fn new(input: &'input str) -> Lexer<'input> {
-        Lexer {
+        let mut lexer = Lexer {
             input: input.chars().peekable(),
             pos: 0,
-        }
+        };
+        lexer.consume_whitespace();
+        lexer
     }
 
     fn next_char(&mut self) -> Option<char> {
