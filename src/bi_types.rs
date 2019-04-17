@@ -1,4 +1,4 @@
-use crate::expr::Expr;
+use crate::expr::{Expr, Literal};
 use crate::utils::parens_if;
 use std::collections::HashSet;
 
@@ -126,6 +126,7 @@ impl Type {
     fn var(str: &str) -> Self {
         Type::Var(str.to_string())
     }
+
     fn ex(str: &str) -> Self {
         Type::Existential(str.to_string())
     }
@@ -145,33 +146,8 @@ impl Type {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct TypeChecker {
-    name_gen: NameGen,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-struct NameGen {
-    ty_gen: u32,
-    ex_gen: u32,
-}
-
-impl NameGen {
-    pub fn new() -> NameGen {
-        NameGen {
-            ty_gen: 0,
-            ex_gen: 0,
-        }
-    }
-
-    pub fn fresh_var(&mut self) -> String {
-        self.ty_gen = self.ty_gen + 1;
-        format!("{}v", self.ty_gen)
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Clone)]
-struct Context {
+pub struct Context {
     elems: Vec<ContextElem>,
 }
 
@@ -186,7 +162,6 @@ impl Context {
     }
 
     fn elem(&self, elem: &ContextElem) -> bool {
-        // TODO: Only unsolved?
         self.split_at(elem).is_some()
     }
 
@@ -259,13 +234,7 @@ impl Context {
 
     fn find_solved(&self, ex: &String) -> Option<&Type> {
         self.elems.iter().find_map(|e| match e {
-            ContextElem::ExVarSolved(var, ty) => {
-                if var == ex {
-                    Some(ty)
-                } else {
-                    None
-                }
-            }
+            ContextElem::ExVarSolved(var, ty) if var == ex => Some(ty),
             _ => None,
         })
     }
@@ -372,30 +341,75 @@ impl Context {
         }
     }
 
-    fn apply(&self, ty: &Type) -> Option<Type> {
+    fn apply(&self, ty: &Type) -> Type {
         match ty {
-            Type::Bool => Some(Type::Bool),
-            Type::Int => Some(Type::Int),
-            Type::Var(v) => {
-                if self.elem(&ContextElem::Universal(v.clone())) {
-                    Some(Type::Var(v.clone()))
-                } else {
-                    None
-                }
-            }
-            Type::Existential(ex) => None,
-            _ => None,
+            Type::Bool => Type::Bool,
+            Type::Int => Type::Int,
+            Type::Var(v) => Type::Var(v.clone()),
+            Type::Existential(ex) => self
+                .find_solved(&ex)
+                .map_or_else(|| ty.clone(), |mono_ty| mono_ty.clone()),
+            Type::Fun { arg, result } => Type::Fun {
+                arg: Box::new(self.apply(arg)),
+                result: Box::new(self.apply(result)),
+            },
+            Type::Poly { vars, ty } => Type::Poly {
+                vars: vars.clone(),
+                ty: Box::new(self.apply(ty)),
+            },
         }
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-enum ContextElem {
+pub enum ContextElem {
     Universal(String),
     ExVar(String),
     ExVarSolved(String, Type),
     Marker(String),
     Anno(String, Type),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum TypeError {
+    Subtype(Type, Type),
+}
+
+impl TypeError {
+    pub fn print(&self) -> String {
+        match self {
+            TypeError::Subtype(ty1, ty2) => format!(
+                "Can't figure out subtyping between: {} <: {}",
+                ty1.print(),
+                ty2.print()
+            ),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct TypeChecker {
+    name_gen: NameGen,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct NameGen {
+    ty_gen: u32,
+    ex_gen: u32,
+}
+
+impl NameGen {
+    pub fn new() -> NameGen {
+        NameGen {
+            ty_gen: 0,
+            ex_gen: 0,
+        }
+    }
+
+    pub fn fresh_var(&mut self) -> String {
+        self.ty_gen = self.ty_gen + 1;
+        format!("{}v", self.ty_gen)
+    }
 }
 
 impl TypeChecker {
@@ -405,12 +419,132 @@ impl TypeChecker {
         }
     }
 
-    fn check(&mut self, ctx: &Context, expr: &Expr, ty: &Type) -> bool {
-        false
+    /// Instantiates all bound type variables for a Polytype with fresh vars,
+    /// and returns the renamed type as well as the freshly generated vars
+    fn rename_poly<F>(&mut self, vars: &Vec<String>, ty: &Type, f: F) -> (Type, Vec<String>)
+    where
+        F: Fn(String) -> Type,
+    {
+        let fresh_vars: Vec<(String, String)> = vars
+            .iter()
+            .map(|v| (v.clone(), self.name_gen.fresh_var()))
+            .collect();
+        let renamed_ty = {
+            let mut tmp_ty = ty.clone();
+            for (old, new) in &fresh_vars {
+                tmp_ty.subst_mut(old, &f(new.to_string()));
+            }
+            tmp_ty
+        };
+        (renamed_ty, fresh_vars.into_iter().map(|x| x.1).collect())
     }
 
-    fn infer(&mut self, ctx: &Context, expr: &Expr) -> Type {
-        Type::Int
+    pub fn subtype<'a>(
+        &mut self,
+        ctx: Context,
+        ty1: &Type,
+        ty2: &Type,
+    ) -> Result<Context, TypeError> {
+        debug!("[subtype] {:?} ({}) ({})", ctx, ty1.print(), ty2.print());
+        assert!(ctx.wf_type(ty1));
+        assert!(ctx.wf_type(ty2));
+
+        match (ty1, ty2) {
+            (Type::Int, Type::Int) => Ok(ctx),
+            (Type::Bool, Type::Bool) => Ok(ctx),
+            (Type::Var(v1), Type::Var(v2)) if v1 == v2 => Ok(ctx),
+            (Type::Existential(e1), Type::Existential(e2)) if e1 == e2 => Ok(ctx),
+            (
+                Type::Fun {
+                    arg: arg1,
+                    result: result1,
+                },
+                Type::Fun {
+                    arg: arg2,
+                    result: result2,
+                },
+            ) => {
+                let tmp_ctx = self.subtype(ctx, arg2, arg1)?;
+                let res1 = tmp_ctx.apply(result1);
+                let res2 = tmp_ctx.apply(result2);
+                self.subtype(tmp_ctx, &res1, &res2)
+            }
+            (ty1, Type::Poly { vars, ty: ty2 }) => {
+                let (renamed_ty, fresh_vars) = self.rename_poly(vars, ty2, |v| Type::Var(v));
+
+                let marker_var = fresh_vars[0].clone();
+                let mut tmp_ctx = ctx.clone();
+                tmp_ctx.push_elems(
+                    fresh_vars
+                        .into_iter()
+                        .map(|v| ContextElem::Universal(v))
+                        .collect(),
+                );
+
+                let mut res = self.subtype(tmp_ctx, ty1, &renamed_ty)?;
+                res.drop_marker(ContextElem::Universal(marker_var));
+                Ok(res)
+            }
+            (Type::Poly { vars, ty: ty1 }, ty2) => {
+                let (renamed_ty, fresh_vars) =
+                    self.rename_poly(vars, ty1, |v| Type::Existential(v));
+
+                let marker_var = fresh_vars[0].clone();
+                let mut tmp_ctx = ctx.clone();
+                tmp_ctx.push_elems(
+                    fresh_vars
+                        .into_iter()
+                        .flat_map(|v| vec![ContextElem::Marker(v.clone()), ContextElem::ExVar(v)])
+                        .collect(),
+                );
+                let mut res = self.subtype(tmp_ctx, &renamed_ty, ty2)?;
+                res.drop_marker(ContextElem::Marker(marker_var));
+                Ok(res)
+            }
+            (Type::Existential(ex), ty) if !ty.free_vars().contains(ex) => {
+                self.instantiate_l(ctx, ex, ty)
+            }
+            _ => Err(TypeError::Subtype(ty1.clone(), ty2.clone())),
+        }
+    }
+
+    fn instantiate_l(
+        &mut self,
+        ctx: Context,
+        ex: &String,
+        ty: &Type,
+    ) -> Result<Context, TypeError> {
+        debug!("[instantiate_l] {:?} ({}) ({})", ctx, ex, ty.print());
+        Ok(ctx)
+    }
+
+    fn check(&mut self, ctx: Context, expr: &Expr, ty: &Type) -> Result<Context, TypeError> {
+        match (expr, ty) {
+            (Expr::Literal(Literal::Int(_)), Type::Int) => Ok(ctx),
+            (Expr::Literal(Literal::Bool(_)), Type::Bool) => Ok(ctx),
+            _ => {
+                let (ctx, inferred) = self.infer(ctx, expr)?;
+                let inferred_ = ctx.apply(&inferred);
+                let ty_ = ctx.apply(ty);
+                self.subtype(ctx, &inferred_, &ty_)
+            }
+        }
+    }
+
+    fn infer(&mut self, ctx: Context, expr: &Expr) -> Result<(Context, Type), TypeError> {
+        match expr {
+            Expr::Literal(Literal::Int(_)) => Ok((ctx, Type::Int)),
+            Expr::Literal(Literal::Bool(_)) => Ok((ctx, Type::Bool)),
+            Expr::Ann { expr, ty } => {
+                let new_ctx = self.check(ctx, expr, ty)?;
+                Ok((new_ctx, ty.clone()))
+            }
+            _ => Ok((ctx, Type::poly(vec!["a"], Type::var("a")))),
+        }
+    }
+
+    pub fn synth(&mut self, expr: &Expr) -> Result<Type, TypeError> {
+        self.infer(Context::new(vec![]), expr).map(|x| x.1)
     }
 }
 
@@ -446,5 +580,16 @@ mod tests {
         ]);
         let new_ctx = ctx.solve("alpha".to_string(), Type::Var("x".to_string()));
         assert_eq!(new_ctx, Some(expected));
+    }
+
+    #[test]
+    fn subty() {
+        let mut tc = TypeChecker::new();
+        let ctx = Context::new(vec![]);
+        let a = Type::poly(vec!["a"], Type::var("a"));
+        let b = Type::Int;
+        // (forall a. a) <: Int
+        let res = tc.subtype(ctx, &a, &b);
+        assert_eq!(res, Ok(Context::new(vec![])));
     }
 }
