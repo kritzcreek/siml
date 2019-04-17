@@ -80,37 +80,34 @@ impl<'input> Iterator for Lexer<'input> {
                     panic!("Failed to parse an arrow.")
                 }
             }
-            Some(c) => {
-                if c.is_digit(10) {
-                    let mut res = c.to_string();
-                    while let Some(c) = self.peek() {
-                        if c.is_digit(10) {
-                            res.push(self.next_char().unwrap())
-                        } else {
-                            break;
-                        }
+            Some(c) if c.is_digit(10) => {
+                let mut res = c.to_string();
+                while let Some(c) = self.peek() {
+                    if c.is_digit(10) {
+                        res.push(self.next_char().unwrap())
+                    } else {
+                        break;
                     }
-                    Some(Token::IntLiteral(res.parse::<i32>().unwrap()))
-                } else if is_ident_start(&c) {
-                    let mut res = c.to_string();
-                    while let Some(c) = self.peek() {
-                        if is_ident_member(c) {
-                            res.push(self.next_char().unwrap())
-                        } else {
-                            break;
-                        }
+                }
+                Some(Token::IntLiteral(res.parse::<i32>().unwrap()))
+            }
+            Some(c) if is_ident_start(&c) => {
+                let mut res = c.to_string();
+                while let Some(c) = self.peek() {
+                    if is_ident_member(c) {
+                        res.push(self.next_char().unwrap())
+                    } else {
+                        break;
                     }
-                    match res.as_str() {
-                        "true" => Some(Token::BooleanLiteral(true)),
-                        "false" => Some(Token::BooleanLiteral(false)),
-                        "forall" => Some(Token::Forall),
-                        _ => Some(Token::Ident(res)),
-                    }
-                } else {
-                    None
+                }
+                match res.as_str() {
+                    "true" => Some(Token::BooleanLiteral(true)),
+                    "false" => Some(Token::BooleanLiteral(false)),
+                    "forall" => Some(Token::Forall),
+                    _ => Some(Token::Ident(res)),
                 }
             }
-            None => None,
+            _ => None,
         };
         self.consume_whitespace();
         debug!("Token: {:?}", &token);
