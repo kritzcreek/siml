@@ -1,8 +1,9 @@
 #[macro_use]
 extern crate log;
+extern crate fern;
 extern crate siml;
-extern crate simplelog;
 
+use fern::colors::{Color, ColoredLevelConfig};
 use siml::eval::Eval;
 use siml::expr::Expr;
 use siml::grammar;
@@ -10,17 +11,17 @@ use siml::repl::repl;
 use siml::term::Term;
 use siml::token;
 use siml::types;
-use simplelog::*;
 
 fn setup_logger() {
-    let logger_conf = Config {
-        time: None,
-        level: Some(Level::Error),
-        target: None,
-        location: None,
-        time_format: None,
-    };
-    TermLogger::init(LevelFilter::Info, logger_conf).unwrap();
+    let colors = ColoredLevelConfig::new()
+        .info(Color::Green)
+        .debug(Color::Blue);
+    let _ = fern::Dispatch::new()
+        .format(move |out, message, record| out.finish(format_args!("[{}] {}", colors.color(record.level()), message)))
+        .level(log::LevelFilter::Info)
+        .level_for("siml::bi_types", log::LevelFilter::Debug)
+        .chain(std::io::stdout())
+        .apply();
 }
 
 fn run_expr(input: &str) -> Expr {
