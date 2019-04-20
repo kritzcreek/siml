@@ -156,6 +156,17 @@ impl Context {
         Context { elems }
     }
 
+    pub fn print(&self) -> String {
+        let mut res = "{\n".to_string();
+        self.elems.iter().for_each(|ce| {
+            res += "  ";
+            res += &ce.print();
+            res += ",\n";
+        });
+        res += "}";
+        res
+    }
+
     fn split_at(&self, elem: &ContextElem) -> Option<(&[ContextElem], &[ContextElem])> {
         let pos = self.elems.iter().position(|x| x == elem);
         pos.map(|pos| self.elems.split_at(pos))
@@ -397,11 +408,24 @@ pub enum ContextElem {
     Anno(String, Type),
 }
 
+impl ContextElem {
+    pub fn print(&self) -> String {
+        match self {
+            ContextElem::Universal(u) => u.clone(),
+            ContextElem::ExVar(ex) => format!("{{{}}}", ex),
+            ContextElem::ExVarSolved(ex, ty) => format!("{{{}}} = {}", ex, ty.print()),
+            ContextElem::Marker(marker) => format!("|> {}", marker),
+            ContextElem::Anno(var, ty) => format!("{} : {}", var, ty.print()),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum TypeError {
     Subtype(Type, Type),
     UnknownVar(String),
     InvalidAnnotation(Type),
+    IsNotAFunction(Type),
 }
 
 impl TypeError {
@@ -416,6 +440,7 @@ impl TypeError {
             TypeError::InvalidAnnotation(ty) => {
                 format!("{} is not a valid annotation here.", ty.print())
             }
+            TypeError::IsNotAFunction(ty) => format!("{} is not a function", ty.print()),
         }
     }
 }
@@ -478,7 +503,7 @@ impl TypeChecker {
         ty1: &Type,
         ty2: &Type,
     ) -> Result<Context, TypeError> {
-        debug!("[subtype] {:?} ({}) ({})", ctx, ty1.print(), ty2.print());
+        debug!("[subtype] \n{} ({}) ({})", ctx.print(), ty1.print(), ty2.print());
         // assert!(ctx.wf_type(ty1));
         // assert!(ctx.wf_type(ty2));
 
@@ -550,12 +575,11 @@ impl TypeChecker {
         ex: &String,
         ty: &Type,
     ) -> Result<Context, TypeError> {
-        debug!("[instantiate_l] {:?} ({}) <=: ({})", ctx, ex, ty.print());
+        debug!("[instantiate_l]\n{} ({}) <=: ({})", ctx.print(), ex, ty.print());
         match ty {
             Type::Existential(ex2) if ctx.existentials_ordered(ex, ex2) => {
                 // InstLReac
                 let new_ctx = ctx.solve(ex2, Type::Existential(ex.clone())).unwrap();
-                debug!("InstLReach: {:?}", new_ctx);
                 Ok(new_ctx)
             }
             Type::Fun { arg, result } => {
@@ -596,7 +620,7 @@ impl TypeChecker {
                 Ok(res_ctx)
             }
             ty if ty.is_mono() => {
-                // InstRSolve
+                // InstLSolve
                 let mut tmp_ctx = ctx.clone();
                 tmp_ctx.drop_marker(ContextElem::ExVar(ex.to_string()));
                 if tmp_ctx.wf_type(ty) {
@@ -614,7 +638,7 @@ impl TypeChecker {
         ty: &Type,
         ex: &String,
     ) -> Result<Context, TypeError> {
-        debug!("[instantiate_R] {:?} ({}) <=: ({})", ctx, ty.print(), ex);
+        debug!("[instantiate_r] \n{} ({}) <=: ({})", ctx.print(), ty.print(), ex);
         match ty {
             Type::Existential(ex2) if ctx.existentials_ordered(ex2, ex) => {
                 // InstRReach
@@ -662,7 +686,7 @@ impl TypeChecker {
                 if tmp_ctx.wf_type(ty) {
                     Ok(ctx.solve(ex, ty.clone()).unwrap())
                 } else {
-                    unreachable!()
+                    unreachable!("{:?} {}", tmp_ctx, ty.print());
                 }
             }
             _ => unreachable!(),
@@ -734,11 +758,11 @@ impl TypeChecker {
                 let binder_fresh = self.name_gen.fresh_var();
                 let a = self.name_gen.fresh_var();
                 let b = self.name_gen.fresh_var();
-                let marker = ContextElem::ExVar(a.clone());
+                let marker = ContextElem::Anno(binder_fresh.clone(), Type::Existential(a.clone()));
                 tmp_ctx.push_elems(vec![
-                    marker.clone(),
+                    ContextElem::ExVar(a.clone()),
                     ContextElem::ExVar(b.clone()),
-                    ContextElem::Anno(binder_fresh.clone(), Type::Existential(a.clone())),
+                    marker.clone(),
                 ]);
 
                 let mut res_ctx = self.check(
@@ -799,7 +823,6 @@ impl TypeChecker {
                 );
                 let res_ctx = self.check(new_ctx, expr, &Type::Existential(a1))?;
                 Ok((res_ctx, Type::Existential(a2)))
-
             }
             Type::Fun { arg, result } => {
                 // ->App
@@ -808,7 +831,7 @@ impl TypeChecker {
                 let applied_res = res_ctx.apply(result);
                 Ok((res_ctx, applied_res))
             }
-            _ => unreachable!("apply mf"),
+            ty => Err(TypeError::IsNotAFunction(ty.clone())),
         }
     }
 
