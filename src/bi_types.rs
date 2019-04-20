@@ -479,8 +479,8 @@ impl TypeChecker {
         ty2: &Type,
     ) -> Result<Context, TypeError> {
         debug!("[subtype] {:?} ({}) ({})", ctx, ty1.print(), ty2.print());
-        assert!(ctx.wf_type(ty1));
-        assert!(ctx.wf_type(ty2));
+        // assert!(ctx.wf_type(ty1));
+        // assert!(ctx.wf_type(ty2));
 
         match (ty1, ty2) {
             (Type::Int, Type::Int) => Ok(ctx),
@@ -537,6 +537,9 @@ impl TypeChecker {
             (Type::Existential(ex), ty) if !ty.free_vars().contains(ex) => {
                 self.instantiate_l(ctx, ex, ty)
             }
+            (ty, Type::Existential(ex)) if !ty.free_vars().contains(ex) => {
+                self.instantiate_r(ctx, ty, ex)
+            }
             _ => Err(TypeError::Subtype(ty1.clone(), ty2.clone())),
         }
     }
@@ -550,8 +553,10 @@ impl TypeChecker {
         debug!("[instantiate_l] {:?} ({}) <=: ({})", ctx, ex, ty.print());
         match ty {
             Type::Existential(ex2) if ctx.existentials_ordered(ex, ex2) => {
-                // InstLReach
-                Ok(ctx.solve(ex2, Type::Existential(ex.clone())).unwrap())
+                // InstLReac
+                let new_ctx = ctx.solve(ex2, Type::Existential(ex.clone())).unwrap();
+                debug!("InstLReach: {:?}", new_ctx);
+                Ok(new_ctx)
             }
             Type::Fun { arg, result } => {
                 // InstLArr
@@ -670,7 +675,6 @@ impl TypeChecker {
             (Expr::Literal(Literal::Bool(_)), Type::Bool) => Ok(ctx),
             (Expr::Lambda { binder, body }, Type::Fun { arg, result }) => {
                 // ->l
-                println!("check lam");
                 let mut new_ctx = ctx;
                 let anno_elem = ContextElem::Anno(binder.clone(), *arg.clone());
                 new_ctx.push(anno_elem.clone());
@@ -745,10 +749,66 @@ impl TypeChecker {
                 res_ctx.drop_marker(marker);
                 Ok((res_ctx, Type::fun(Type::ex(&a), Type::ex(&b))))
             }
-            _ => {
-                println!("lul");
-                Ok((ctx, Type::poly(vec!["a"], Type::var("a"))))
+            Expr::App { func, arg } => {
+                let (ctx, func_ty) = self.infer(ctx, func)?;
+                let applied_func_ty = ctx.apply(&func_ty);
+                self.infer_application(ctx, &applied_func_ty, arg)
             }
+        }
+    }
+
+    fn infer_application(
+        &mut self,
+        ctx: Context,
+        ty: &Type,
+        expr: &Expr,
+    ) -> Result<(Context, Type), TypeError> {
+        match ty {
+            Type::Poly { vars, ty: ty1 } => {
+                // forall App
+                debug!("forall App: {} . {}", ty.print(), expr.print());
+                let (renamed_ty, fresh_vars) =
+                    self.rename_poly(vars, ty1, |v| Type::Existential(v.clone()));
+                let mut new_ctx = ctx;
+                new_ctx.push_elems(
+                    fresh_vars
+                        .into_iter()
+                        .map(|v| ContextElem::ExVar(v))
+                        .collect(),
+                );
+                self.infer_application(new_ctx, &renamed_ty, expr)
+            }
+            Type::Existential(ex) => {
+                // alpha^app
+                let a1 = self.name_gen.fresh_var();
+                let a2 = self.name_gen.fresh_var();
+                let mut new_ctx = ctx;
+                new_ctx.insert_at_ex(
+                    ex,
+                    vec![
+                        ContextElem::ExVar(a2.clone()),
+                        ContextElem::ExVar(a1.clone()),
+                        ContextElem::ExVarSolved(
+                            ex.clone(),
+                            Type::Fun {
+                                arg: Box::new(Type::Existential(a1.clone())),
+                                result: Box::new(Type::Existential(a2.clone())),
+                            },
+                        ),
+                    ],
+                );
+                let res_ctx = self.check(new_ctx, expr, &Type::Existential(a1))?;
+                Ok((res_ctx, Type::Existential(a2)))
+
+            }
+            Type::Fun { arg, result } => {
+                // ->App
+                debug!("[->App] {} . {}", ty.print(), expr.print());
+                let res_ctx = self.check(ctx, expr, arg)?;
+                let applied_res = res_ctx.apply(result);
+                Ok((res_ctx, applied_res))
+            }
+            _ => unreachable!("apply mf"),
         }
     }
 
