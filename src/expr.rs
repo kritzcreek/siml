@@ -44,6 +44,31 @@ impl Expr {
         }
     }
 
+    pub fn subst(&self, var: &String, replacement: &Expr) -> Expr {
+        let mut expr = self.clone();
+        expr.subst_mut(var, replacement);
+        expr
+    }
+
+    pub fn subst_mut(&mut self, var: &String, replacement: &Expr) {
+        match self {
+            Expr::Var(v) if v == var => {
+                *self = replacement.clone();
+            }
+            Expr::Ann { expr, .. } => {
+                expr.subst_mut(var, replacement);
+            }
+            Expr::Lambda {binder, body} if binder != var => {
+                body.subst_mut(var, replacement);
+            }
+            Expr::App { func, arg } => {
+                func.subst_mut(var, replacement);
+                arg.subst_mut(var, replacement);
+            }
+            _ => {}
+        }
+    }
+
     pub fn free_vars(&self) -> HashSet<&String> {
         match self {
             Expr::Var(s) => {

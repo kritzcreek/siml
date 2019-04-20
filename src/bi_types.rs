@@ -161,6 +161,19 @@ impl Context {
         pos.map(|pos| self.elems.split_at(pos))
     }
 
+    /// Splits the context at the introduction of ExVar(ex)
+    fn split_at_ex(&self, ex: &String) -> Option<(&[ContextElem], &ContextElem, &[ContextElem])> {
+        let pos = self.elems.iter().position(|e| match e {
+            ContextElem::ExVar(e) if e == ex => true,
+            _ => false,
+        });
+        pos.map(|pos| {
+            let (before, after) = self.elems.split_at(pos);
+            let (ex, after) = after.split_first().unwrap();
+            (before, ex, after)
+        })
+    }
+
     fn elem(&self, elem: &ContextElem) -> bool {
         self.split_at(elem).is_some()
     }
@@ -175,6 +188,20 @@ impl Context {
 
     fn push_elems(&mut self, elems: Vec<ContextElem>) {
         self.elems.extend(elems.into_iter())
+    }
+
+    fn insert_at_ex(&self, ex: &String, elems: Vec<ContextElem>) -> Context {
+        match self.split_at_ex(ex) {
+            // TODO: Could accept a function that could use the ContextElem here, instead of discarding it
+            Some((before, _, after)) => {
+                let mut new_elems = vec![];
+                new_elems.extend_from_slice(before);
+                new_elems.extend(elems.into_iter());
+                new_elems.extend_from_slice(after);
+                Context::new(new_elems)
+            }
+            None => unreachable!(),
+        }
     }
 
     fn drop_marker(&mut self, marker: ContextElem) {
@@ -253,11 +280,11 @@ impl Context {
     }
 
     /// solve (ΓL,α^,ΓR) α τ = (ΓL,α = τ,ΓR)
-    fn solve(&self, ex: String, ty: Type) -> Option<Context> {
+    fn solve(&self, ex: &String, ty: Type) -> Option<Context> {
         let (gamma_l, gamma_r) = self.break_marker(ContextElem::ExVar(ex.clone()));
         let mut ctx = Context::new(gamma_l);
         if ctx.wf_type(&ty) {
-            ctx.push(ContextElem::ExVarSolved(ex, ty));
+            ctx.push(ContextElem::ExVarSolved(ex.clone(), ty));
             ctx.push_elems(gamma_r);
             Some(ctx)
         } else {
@@ -266,12 +293,12 @@ impl Context {
     }
 
     /// existentials_ordered Γ α β = True <=> Γ[α^][β^]
-    fn existentials_ordered(&self, ex1: String, ex2: String) -> bool {
-        let (gamma_l, _) = self.break_marker(ContextElem::ExVar(ex2));
+    fn existentials_ordered(&self, ex1: &String, ex2: &String) -> bool {
+        let (gamma_l, _) = self.break_marker(ContextElem::ExVar(ex2.to_string()));
         // TODO: Do we also need to find solved ExVars here? I don't
         // think so because this is only used to assign two unsolved
         // existentials to one another
-        gamma_l.contains(&ContextElem::ExVar(ex1))
+        gamma_l.contains(&ContextElem::ExVar(ex1.to_string()))
     }
 
     fn u_var_wf(&self, var: &String) -> bool {
@@ -373,6 +400,8 @@ pub enum ContextElem {
 #[derive(Debug, PartialEq, Eq)]
 pub enum TypeError {
     Subtype(Type, Type),
+    UnknownVar(String),
+    InvalidAnnotation(Type),
 }
 
 impl TypeError {
@@ -383,6 +412,10 @@ impl TypeError {
                 ty1.print(),
                 ty2.print()
             ),
+            TypeError::UnknownVar(var) => format!("Unknown variable: {}", var),
+            TypeError::InvalidAnnotation(ty) => {
+                format!("{} is not a valid annotation here.", ty.print())
+            }
         }
     }
 }
@@ -514,19 +547,158 @@ impl TypeChecker {
         ex: &String,
         ty: &Type,
     ) -> Result<Context, TypeError> {
-        debug!("[instantiate_l] {:?} ({}) ({})", ctx, ex, ty.print());
-        Ok(ctx)
+        debug!("[instantiate_l] {:?} ({}) <=: ({})", ctx, ex, ty.print());
+        match ty {
+            Type::Existential(ex2) if ctx.existentials_ordered(ex, ex2) => {
+                // InstLReach
+                Ok(ctx.solve(ex2, Type::Existential(ex.clone())).unwrap())
+            }
+            Type::Fun { arg, result } => {
+                // InstLArr
+                let a2 = self.name_gen.fresh_var();
+                let a1 = self.name_gen.fresh_var();
+                let tmp_ctx = ctx.insert_at_ex(
+                    ex,
+                    vec![
+                        ContextElem::ExVar(a2.clone()),
+                        ContextElem::ExVar(a1.clone()),
+                        ContextElem::ExVarSolved(
+                            ex.clone(),
+                            Type::Fun {
+                                arg: Box::new(Type::Existential(a1.clone())),
+                                result: Box::new(Type::Existential(a2.clone())),
+                            },
+                        ),
+                    ],
+                );
+                let omega_ctx = self.instantiate_r(tmp_ctx, arg, &a1)?;
+                let applied_res = omega_ctx.apply(result);
+                self.instantiate_l(omega_ctx, &a2, &applied_res)
+            }
+            Type::Poly { vars, ty } => {
+                //InstLAIIR
+                let mut new_ctx = ctx;
+                let (renamed_ty, fresh_vars) = self.rename_poly(vars, ty, |v| Type::Existential(v));
+                new_ctx.push_elems(
+                    fresh_vars
+                        .clone()
+                        .into_iter()
+                        .map(|v| ContextElem::Universal(v))
+                        .collect(),
+                );
+                let mut res_ctx = self.instantiate_r(new_ctx, &renamed_ty, ex)?;
+                res_ctx.drop_marker(ContextElem::Marker(fresh_vars[0].clone()));
+                Ok(res_ctx)
+            }
+            ty if ty.is_mono() => {
+                // InstRSolve
+                let mut tmp_ctx = ctx.clone();
+                tmp_ctx.drop_marker(ContextElem::ExVar(ex.to_string()));
+                if tmp_ctx.wf_type(ty) {
+                    Ok(ctx.solve(ex, ty.clone()).unwrap())
+                } else {
+                    unreachable!()
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+    fn instantiate_r(
+        &mut self,
+        ctx: Context,
+        ty: &Type,
+        ex: &String,
+    ) -> Result<Context, TypeError> {
+        debug!("[instantiate_R] {:?} ({}) <=: ({})", ctx, ty.print(), ex);
+        match ty {
+            Type::Existential(ex2) if ctx.existentials_ordered(ex2, ex) => {
+                // InstRReach
+                Ok(ctx.solve(ex, Type::Existential(ex2.clone())).unwrap())
+            }
+            Type::Fun { arg, result } => {
+                // InstRArr
+                let a2 = self.name_gen.fresh_var();
+                let a1 = self.name_gen.fresh_var();
+                let tmp_ctx = ctx.insert_at_ex(
+                    ex,
+                    vec![
+                        ContextElem::ExVar(a2.clone()),
+                        ContextElem::ExVar(a1.clone()),
+                        ContextElem::ExVarSolved(
+                            ex.clone(),
+                            Type::Fun {
+                                arg: Box::new(Type::Existential(a1.clone())),
+                                result: Box::new(Type::Existential(a2.clone())),
+                            },
+                        ),
+                    ],
+                );
+                let omega_ctx = self.instantiate_l(tmp_ctx, &a1, arg)?;
+                let applied_res = omega_ctx.apply(result);
+                self.instantiate_r(omega_ctx, &applied_res, &a2)
+            }
+            Type::Poly { vars, ty } => {
+                //InstRAIIL
+                let mut new_ctx = ctx;
+                new_ctx.push_elems(
+                    vars.clone()
+                        .into_iter()
+                        .flat_map(|v| vec![ContextElem::Marker(v.clone()), ContextElem::ExVar(v)])
+                        .collect(),
+                );
+                let mut res_ctx = self.instantiate_l(new_ctx, ex, ty)?;
+                res_ctx.drop_marker(ContextElem::Universal(vars[0].clone()));
+                Ok(res_ctx)
+            }
+            ty if ty.is_mono() => {
+                // InstRSolve
+                let mut tmp_ctx = ctx.clone();
+                tmp_ctx.drop_marker(ContextElem::ExVar(ex.to_string()));
+                if tmp_ctx.wf_type(ty) {
+                    Ok(ctx.solve(ex, ty.clone()).unwrap())
+                } else {
+                    unreachable!()
+                }
+            }
+            _ => unreachable!(),
+        }
     }
 
     fn check(&mut self, ctx: Context, expr: &Expr, ty: &Type) -> Result<Context, TypeError> {
         match (expr, ty) {
             (Expr::Literal(Literal::Int(_)), Type::Int) => Ok(ctx),
             (Expr::Literal(Literal::Bool(_)), Type::Bool) => Ok(ctx),
+            (Expr::Lambda { binder, body }, Type::Fun { arg, result }) => {
+                // ->l
+                println!("check lam");
+                let mut new_ctx = ctx;
+                let anno_elem = ContextElem::Anno(binder.clone(), *arg.clone());
+                new_ctx.push(anno_elem.clone());
+                let mut res_ctx = self.check(new_ctx, body, result)?;
+                res_ctx.drop_marker(anno_elem);
+                Ok(res_ctx)
+            }
+            (_, Type::Poly { vars, ty }) => {
+                //forall_l
+                let mut tmp_ctx = ctx;
+                let (renamed_ty, fresh_vars) = self.rename_poly(vars, ty, |v| Type::Var(v.clone()));
+                let marker = ContextElem::Universal(fresh_vars[0].clone());
+                tmp_ctx.push_elems(
+                    fresh_vars
+                        .into_iter()
+                        .map(|v| ContextElem::Universal(v))
+                        .collect(),
+                );
+                let mut res_ctx = self.check(tmp_ctx, expr, &renamed_ty)?;
+                res_ctx.drop_marker(marker);
+                Ok(res_ctx)
+            }
             _ => {
+                // Sub
                 let (ctx, inferred) = self.infer(ctx, expr)?;
-                let inferred_ = ctx.apply(&inferred);
-                let ty_ = ctx.apply(ty);
-                self.subtype(ctx, &inferred_, &ty_)
+                let inferred = ctx.apply(&inferred);
+                let ty = ctx.apply(ty);
+                self.subtype(ctx, &inferred, &ty)
             }
         }
     }
@@ -535,16 +707,56 @@ impl TypeChecker {
         match expr {
             Expr::Literal(Literal::Int(_)) => Ok((ctx, Type::Int)),
             Expr::Literal(Literal::Bool(_)) => Ok((ctx, Type::Bool)),
-            Expr::Ann { expr, ty } => {
-                let new_ctx = self.check(ctx, expr, ty)?;
-                Ok((new_ctx, ty.clone()))
+            Expr::Var(var) => {
+                // Var
+                let res = match ctx.find_var(var) {
+                    Some(ty) => Ok(ty.clone()),
+                    None => Err(TypeError::UnknownVar(var.clone())),
+                };
+                res.map(|ty| (ctx, ty))
             }
-            _ => Ok((ctx, Type::poly(vec!["a"], Type::var("a")))),
+            Expr::Ann { expr, ty } => {
+                // Anno
+                if ctx.wf_type(ty) {
+                    let new_ctx = self.check(ctx, expr, ty)?;
+                    Ok((new_ctx, ty.clone()))
+                } else {
+                    Err(TypeError::InvalidAnnotation(ty.clone()))
+                }
+            }
+            Expr::Lambda { binder, body } => {
+                // ->l=>
+                let mut tmp_ctx = ctx;
+                let binder_fresh = self.name_gen.fresh_var();
+                let a = self.name_gen.fresh_var();
+                let b = self.name_gen.fresh_var();
+                let marker = ContextElem::ExVar(a.clone());
+                tmp_ctx.push_elems(vec![
+                    marker.clone(),
+                    ContextElem::ExVar(b.clone()),
+                    ContextElem::Anno(binder_fresh.clone(), Type::Existential(a.clone())),
+                ]);
+
+                let mut res_ctx = self.check(
+                    tmp_ctx,
+                    &body.subst(binder, &Expr::Var(binder_fresh)),
+                    &Type::Existential(b.clone()),
+                )?;
+                res_ctx.drop_marker(marker);
+                Ok((res_ctx, Type::fun(Type::ex(&a), Type::ex(&b))))
+            }
+            _ => {
+                println!("lul");
+                Ok((ctx, Type::poly(vec!["a"], Type::var("a"))))
+            }
         }
     }
 
     pub fn synth(&mut self, expr: &Expr) -> Result<Type, TypeError> {
-        self.infer(Context::new(vec![]), expr).map(|x| x.1)
+        self.infer(Context::new(vec![]), expr).map(|x| {
+            debug!("synth_ctx: {:?}", x.0);
+            x.1
+        })
     }
 }
 
@@ -578,7 +790,7 @@ mod tests {
             ContextElem::ExVarSolved("alpha".to_string(), Type::Var("x".to_string())),
             ContextElem::Anno("var".to_string(), Type::Int),
         ]);
-        let new_ctx = ctx.solve("alpha".to_string(), Type::Var("x".to_string()));
+        let new_ctx = ctx.solve(&"alpha".to_string(), Type::Var("x".to_string()));
         assert_eq!(new_ctx, Some(expected));
     }
 
