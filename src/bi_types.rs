@@ -302,9 +302,6 @@ impl Context {
     /// existentials_ordered Γ α β = True <=> Γ[α^][β^]
     fn existentials_ordered(&self, ex1: &String, ex2: &String) -> bool {
         let (gamma_l, _) = self.break_marker(ContextElem::ExVar(ex2.to_string()));
-        // TODO: Do we also need to find solved ExVars here? I don't
-        // think so because this is only used to assign two unsolved
-        // existentials to one another
         gamma_l.contains(&ContextElem::ExVar(ex1.to_string()))
     }
 

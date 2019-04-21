@@ -19,7 +19,7 @@ fn setup_logger() {
     let _ = fern::Dispatch::new()
         .format(move |out, message, record| out.finish(format_args!("[{}] {}", colors.color(record.level()), message)))
         .level(log::LevelFilter::Info)
-        .level_for("siml::bi_types", log::LevelFilter::Debug)
+        // .level_for("siml::bi_types", log::LevelFilter::Debug)
         .chain(std::io::stdout())
         .apply();
 }
