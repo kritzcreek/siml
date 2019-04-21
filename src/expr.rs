@@ -58,7 +58,7 @@ impl Expr {
             Expr::Ann { expr, .. } => {
                 expr.subst_mut(var, replacement);
             }
-            Expr::Lambda {binder, body} if binder != var => {
+            Expr::Lambda { binder, body } if binder != var => {
                 body.subst_mut(var, replacement);
             }
             Expr::App { func, arg } => {

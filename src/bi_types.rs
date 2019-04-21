@@ -419,6 +419,7 @@ pub enum TypeError {
     UnknownVar(String),
     InvalidAnnotation(Type),
     IsNotAFunction(Type),
+    ExistentialEscaped(Context, Type, String),
 }
 
 impl TypeError {
@@ -434,6 +435,12 @@ impl TypeError {
                 format!("{} is not a valid annotation here.", ty.print())
             }
             TypeError::IsNotAFunction(ty) => format!("{} is not a function", ty.print()),
+            TypeError::ExistentialEscaped(ctx, ty, ex) => format!(
+                "An existential escaped, go get it! {} {} {}",
+                ctx.print(),
+                ty.print(),
+                ex
+            ),
         }
     }
 }
@@ -496,9 +503,14 @@ impl TypeChecker {
         ty1: &Type,
         ty2: &Type,
     ) -> Result<Context, TypeError> {
-        debug!("[subtype] \n{} ({}) ({})", ctx.print(), ty1.print(), ty2.print());
-        // assert!(ctx.wf_type(ty1));
-        // assert!(ctx.wf_type(ty2));
+        debug!(
+            "[subtype] \n{} ({}) ({})",
+            ctx.print(),
+            ty1.print(),
+            ty2.print()
+        );
+        assert!(ctx.wf_type(ty1));
+        assert!(ctx.wf_type(ty2));
 
         match (ty1, ty2) {
             (Type::Int, Type::Int) => Ok(ctx),
@@ -568,11 +580,18 @@ impl TypeChecker {
         ex: &String,
         ty: &Type,
     ) -> Result<Context, TypeError> {
-        debug!("[instantiate_l]\n{} ({}) <=: ({})", ctx.print(), ex, ty.print());
+        debug!(
+            "[instantiate_l]\n{} ({}) <=: ({})",
+            ctx.print(),
+            ex,
+            ty.print()
+        );
         match ty {
             Type::Existential(ex2) if ctx.existentials_ordered(ex, ex2) => {
                 // InstLReac
-                let new_ctx = ctx.solve(ex2, Type::Existential(ex.clone())).unwrap();
+                let new_ctx = ctx
+                    .solve(ex2, Type::Existential(ex.clone()))
+                    .expect("InstLReach, attempted to solve non-existent existential.");
                 Ok(new_ctx)
             }
             Type::Fun { arg, result } => {
@@ -619,10 +638,14 @@ impl TypeChecker {
                 if tmp_ctx.wf_type(ty) {
                     Ok(ctx.solve(ex, ty.clone()).unwrap())
                 } else {
-                    unreachable!()
+                    Err(TypeError::ExistentialEscaped(
+                        tmp_ctx,
+                        ty.clone(),
+                        ex.clone(),
+                    ))
                 }
             }
-            _ => unreachable!(),
+            _ => unreachable!("InstLSolve, How did we get here?"),
         }
     }
     fn instantiate_r(
@@ -631,7 +654,12 @@ impl TypeChecker {
         ty: &Type,
         ex: &String,
     ) -> Result<Context, TypeError> {
-        debug!("[instantiate_r] \n{} ({}) <=: ({})", ctx.print(), ty.print(), ex);
+        debug!(
+            "[instantiate_r] \n{} ({}) <=: ({})",
+            ctx.print(),
+            ty.print(),
+            ex
+        );
         match ty {
             Type::Existential(ex2) if ctx.existentials_ordered(ex, ex2) => {
                 // InstRReach
@@ -661,7 +689,8 @@ impl TypeChecker {
             }
             Type::Poly { vars, ty } => {
                 //InstRAIIL
-                let (renamed_ty, fresh_vars) = self.rename_poly(vars, ty, |v| Type::Existential(v.clone()));
+                let (renamed_ty, fresh_vars) =
+                    self.rename_poly(vars, ty, |v| Type::Existential(v.clone()));
                 let mut new_ctx = ctx;
                 let marker = ContextElem::Marker(fresh_vars[0].clone());
                 new_ctx.push_elems(
@@ -682,10 +711,14 @@ impl TypeChecker {
                 if tmp_ctx.wf_type(ty) {
                     Ok(ctx.solve(ex, ty.clone()).unwrap())
                 } else {
-                    unreachable!("{} {} {}", tmp_ctx.print(), ty.print(), ex);
+                    Err(TypeError::ExistentialEscaped(
+                        tmp_ctx.clone(),
+                        ty.clone(),
+                        ex.clone(),
+                    ))
                 }
             }
-            _ => unreachable!(),
+            _ => unreachable!("InstRSolve, how does this happen?"),
         }
     }
 
@@ -786,7 +819,12 @@ impl TypeChecker {
         match ty {
             Type::Poly { vars, ty: ty1 } => {
                 // forall App
-                debug!("[forall App] {} {} . {}", ctx.print(), ty.print(), expr.print());
+                debug!(
+                    "[forall App] {} {} . {}",
+                    ctx.print(),
+                    ty.print(),
+                    expr.print()
+                );
                 let (renamed_ty, fresh_vars) =
                     self.rename_poly(vars, ty1, |v| Type::Existential(v.clone()));
                 let mut new_ctx = ctx;
