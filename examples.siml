@@ -1,0 +1,17 @@
+(\x. x)
+(\x. (\y.(\x. x y)) x)(\l. l)
+(\x. (\y.(\x. x y)) x)(\l. l)
+(\x. (\y.(\x. x y)) x)(\l. l)(\k. k)
+(\x. (\y.(\x. x y)) x)(\l. l)(\k. k)
+(\x. x) true
+(\x. x) true
+(\x. x) 100
+(\x. x) 100
+(\x. x) pi
+(\x. x) pi
+add ((\x. x) 4) ((\x. x) 4)
+add (add 1 2) 3
+\f. (\x. \y. x) 1 (f true)
+\x. x x
+(\x. (x: Int)) true
+((\run. run 1) : forall r. (forall s. s -> r) -> r) (\x. x)

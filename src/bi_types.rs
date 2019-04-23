@@ -869,7 +869,14 @@ impl TypeChecker {
     }
 
     pub fn synth(&mut self, expr: &Expr) -> Result<Type, TypeError> {
-        self.infer(Context::new(vec![]), expr).map(|x| {
+        let initial_ctx = Context::new(vec![
+            ContextElem::Anno(
+                "add".to_string(),
+                Type::fun(Type::Int, Type::fun(Type::Int, Type::Int)),
+            ),
+            ContextElem::Anno("pi".to_string(), Type::Int),
+        ]);
+        self.infer(initial_ctx, expr).map(|x| {
             debug!("synth_ctx: {:?}", x.0);
             x.0.apply(&x.1)
         })

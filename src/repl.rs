@@ -20,7 +20,7 @@ fn print_eval_res(ty_res: Result<term::Term, term::EvalError>) -> String {
     }
 }
 
-fn run_term(input: &str) {
+pub fn run_term(input: &str) {
     let lexer = token::Lexer::new(input);
     let res = grammar::ExprParser::new().parse(lexer);
     match res {
@@ -47,7 +47,7 @@ fn run_type(input: &str) {
     }
 }
 
-pub fn repl() {
+pub fn run() {
     // `()` can be used when no completer is required
     let mut rl = Editor::<()>::new();
     if rl.load_history("history.txt").is_err() {
