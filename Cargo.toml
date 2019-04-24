@@ -11,6 +11,7 @@ regex = "1"
 log = "*"
 fern = { version = "0.5", features = ["colored"] }
 rustyline = "^3.0.0"
+notify = "4"
 
 [build-dependencies]
 lalrpop = "0.16.3"
