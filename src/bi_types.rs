@@ -737,10 +737,11 @@ impl TypeChecker {
             }
             (Expr::Let { binder, expr, body }, ty) => {
                 let (ctx, ty_binder) = self.infer(ctx, expr)?;
+                let binder_fresh = self.name_gen.fresh_var();
                 let mut new_ctx = ctx;
-                let anno_elem = ContextElem::Anno(binder.clone(), ty_binder);
+                let anno_elem = ContextElem::Anno(binder_fresh.clone(), ty_binder);
                 new_ctx.push(anno_elem);
-                let mut res_ctx = self.check(new_ctx, body, ty)?;
+                let mut res_ctx = self.check(new_ctx, &body.subst(binder, &Expr::Var(binder_fresh)), ty)?;
                 Ok(res_ctx)
             }
             (_, Type::Poly { vars, ty }) => {
