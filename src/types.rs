@@ -260,6 +260,22 @@ impl TypeChecker {
                     s,
                 ))
             }
+            Expr::Let { binder, expr, body } => {
+                let (ty_binder, s1) = self.infer(env, expr)?;
+                let mut tmp_env = env.clone();
+                tmp_env.insert(
+                    binder.to_string(),
+                    Scheme {
+                        vars: vec![],
+                        ty: ty_binder.clone(),
+                    },
+                );
+                let (ty_body, s2) = self.infer(&tmp_env, body)?;
+                Ok((
+                    ty_body,
+                    TypeChecker::compose_subst(s1, s2),
+                ))
+            }
             Expr::App { func, arg } => {
                 let ty_res = self.fresh_var();
                 let (ty_fun, s1) = self.infer(env, func)?;

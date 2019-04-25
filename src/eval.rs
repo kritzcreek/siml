@@ -69,6 +69,19 @@ impl Eval {
                     expr.clone()
                 }
             }
+            Expr::Let { binder, expr, body } => {
+                let new_expr = self.substitute(expr, scrutinee, replacement);
+                let new_body = if scrutinee != binder {
+                    self.substitute(body, scrutinee, replacement)
+                } else {
+                    *body.clone()
+                };
+                Expr::Let {
+                    binder: binder.clone(),
+                    expr: Box::new(new_expr),
+                    body: Box::new(new_body),
+                }
+            }
             Expr::Lambda { binder, body } => {
                 if binder == scrutinee {
                     return expr.clone();

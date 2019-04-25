@@ -4,12 +4,15 @@ use std::str::Chars;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Token {
     Lambda,
+    Equals,
     Dot,
     LParen,
     RParen,
     Colon,
     Arrow,
     Forall,
+    Let,
+    In,
     Ident(String),
     IntLiteral(i32),
     BooleanLiteral(bool),
@@ -70,6 +73,7 @@ impl<'input> Iterator for Lexer<'input> {
     fn next(&mut self) -> Option<Token> {
         let token = match self.next_char() {
             Some('\\') => Some(Token::Lambda),
+            Some('=') => Some(Token::Equals),
             Some('.') => Some(Token::Dot),
             Some('(') => Some(Token::LParen),
             Some(')') => Some(Token::RParen),
@@ -106,6 +110,8 @@ impl<'input> Iterator for Lexer<'input> {
                     "true" => Some(Token::BooleanLiteral(true)),
                     "false" => Some(Token::BooleanLiteral(false)),
                     "forall" => Some(Token::Forall),
+                    "let" => Some(Token::Let),
+                    "in" => Some(Token::In),
                     _ => Some(Token::Ident(res)),
                 }
             }

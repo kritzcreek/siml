@@ -11,6 +11,9 @@ extern {
         "int_literal" => Token::IntLiteral(<i32>),
         "bool_literal" => Token::BooleanLiteral(<bool>),
         "forall" => Token::Forall,
+        "let" => Token::Let,
+        "in" => Token::In,
+        "=" => Token::Equals,
         "\\" => Token::Lambda,
         "(" => Token::LParen,
         ")" => Token::RParen,
@@ -24,6 +27,8 @@ pub Expr: Expr = {
     ExprAtom,
     "\\" <binder: "identifier"> "." <body: Expr> =>
         Expr::Lambda { binder: binder.to_string(), body: Box::new(body) },
+    "let" <binder: "identifier"> "=" <expr: Expr> "in" <body: Expr> =>
+        Expr::Let { binder: binder.to_string(), expr: Box::new(expr), body: Box::new(body) },
     <function: ExprAtom> <arguments: ExprAtom+> => {
         arguments
           .into_iter()

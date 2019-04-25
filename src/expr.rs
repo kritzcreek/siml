@@ -21,6 +21,7 @@ impl Literal {
 pub enum Expr {
     App { func: Box<Expr>, arg: Box<Expr> },
     Lambda { binder: String, body: Box<Expr> },
+    Let { binder: String, expr: Box<Expr>, body: Box<Expr> },
     Var(String),
     Literal(Literal),
     Ann { expr: Box<Expr>, ty: Type },
@@ -35,6 +36,7 @@ impl Expr {
         match self {
             Expr::Var(s) => s.clone(),
             Expr::Lambda { binder, body } => format!("(\\{}. {})", binder, body.print()),
+            Expr::Let { binder, expr, body } => format!("let {} = {} in {}", binder, expr.print(), body.print()),
             Expr::App { func, arg } => parens_if(
                 depth > 0,
                 format!("{} {}", func.print_inner(depth), arg.print_inner(depth + 1)),
@@ -79,6 +81,13 @@ impl Expr {
             Expr::Lambda { binder, body } => {
                 let mut res = body.free_vars();
                 res.remove(binder);
+                res
+            }
+            Expr::Let { binder, expr, body } => {
+                let mut res = expr.free_vars();
+                let mut body_vars = body.free_vars();
+                body_vars.remove(binder);
+                res.extend(body_vars);
                 res
             }
             Expr::App { func, arg } => func.free_vars().union(&arg.free_vars()).cloned().collect(),

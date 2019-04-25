@@ -735,6 +735,14 @@ impl TypeChecker {
                 res_ctx.drop_marker(anno_elem);
                 Ok(res_ctx)
             }
+            (Expr::Let { binder, expr, body }, ty) => {
+                let (ctx, ty_binder) = self.infer(ctx, expr)?;
+                let mut new_ctx = ctx;
+                let anno_elem = ContextElem::Anno(binder.clone(), ty_binder);
+                new_ctx.push(anno_elem);
+                let mut res_ctx = self.check(new_ctx, body, ty)?;
+                Ok(res_ctx)
+            }
             (_, Type::Poly { vars, ty }) => {
                 //forall_l
                 let mut tmp_ctx = ctx;
@@ -780,6 +788,14 @@ impl TypeChecker {
                 } else {
                     Err(TypeError::InvalidAnnotation(ty.clone()))
                 }
+            }
+            Expr::Let { binder, expr, body } => {
+                let (ctx, ty_binder) = self.infer(ctx, expr)?;
+                let binder_fresh = self.name_gen.fresh_var();
+                let mut tmp_ctx = ctx;
+                tmp_ctx.push(ContextElem::Anno(binder_fresh.clone(), ty_binder));
+                self.infer(tmp_ctx, &body.subst(binder, &Expr::Var(binder_fresh)))
+
             }
             Expr::Lambda { binder, body } => {
                 // ->l=>
