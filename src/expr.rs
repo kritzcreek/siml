@@ -63,6 +63,12 @@ impl Expr {
             Expr::Lambda { binder, body } if binder != var => {
                 body.subst_mut(var, replacement);
             }
+            Expr::Let { binder, expr, body } => {
+                expr.subst_mut(var, replacement);
+                if (binder != var) {
+                    body.subst_mut(var, replacement);
+                }
+            }
             Expr::App { func, arg } => {
                 func.subst_mut(var, replacement);
                 arg.subst_mut(var, replacement);

@@ -20,3 +20,6 @@ let x = 4 in x;
 (let x = 4 in x : Int);
 (let f = \y. y in (\x. \y. x) (f 1) (f true));
 (let f = (\y. y : forall a. a -> a) in (\x. \y. x) (f 1) (f true));
+   let identity = (\y. y : forall a. a -> a)
+in let const = \x. \y. x
+in const (identity 1) (identity true);
