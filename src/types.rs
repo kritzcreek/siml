@@ -20,13 +20,13 @@ pub struct Scheme {
 impl Type {
     pub fn from_bi_type(ty: bi_types::Type) -> Self {
         match ty {
-            bi_types::Type::Int => Type::Int,
-            bi_types::Type::Bool => Type::Bool,
             bi_types::Type::Var(v) => Type::Var(v),
             bi_types::Type::Fun { arg, result } => Type::Fun {
                 arg: Box::new(Type::from_bi_type(*arg)),
                 result: Box::new(Type::from_bi_type(*result)),
             },
+            ref ty if *ty == bi_types::Type::int() => Type::Int,
+            ref ty if *ty == bi_types::Type::boolean() => Type::Bool,
             t => panic!("Type can't handle {}", t.print()),
         }
     }

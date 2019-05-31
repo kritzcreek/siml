@@ -36,9 +36,8 @@ pub Expr: Expr = {
     },
 }
 
-
 ExprAtom: Expr = {
-    <i:"identifier"> => Expr::Var(i.to_string()),
+    "identifier" => Expr::Var(<>.to_string()),
     "int_literal" => Expr::Literal(Literal::Int(<>)),
     "bool_literal" => Expr::Literal(Literal::Bool(<>)),
     "(" <e:Expr> ":" <t:BiType> ")" => Expr::Ann{ ty: t, expr: Box::new(e) },
@@ -64,10 +63,10 @@ pub BiType: bi_types::Type = {
 TypeAtom: bi_types::Type = {
     "(" <t:BiType> ")" => t,
     <i:"identifier"> => {
-        match i.as_ref() {
-          "Int" => bi_types::Type::Int,
-          "Bool" => bi_types::Type::Bool,
-          _ => bi_types::Type::Var(i),
-        }
+      if i.chars().next().unwrap().is_lowercase() {
+          bi_types::Type::Var(i)
+      } else {
+          bi_types::Type::Constructor(i)
+      }
     }
 }

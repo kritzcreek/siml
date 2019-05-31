@@ -65,7 +65,7 @@ impl Expr {
             }
             Expr::Let { binder, expr, body } => {
                 expr.subst_mut(var, replacement);
-                if (binder != var) {
+                if binder != var {
                     body.subst_mut(var, replacement);
                 }
             }

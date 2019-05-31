@@ -4,12 +4,17 @@ use std::collections::HashSet;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Type {
-    Int,
-    Bool,
+    Constructor(String),
     Var(String),
     Existential(String),
-    Poly { vars: Vec<String>, ty: Box<Type> },
-    Fun { arg: Box<Type>, result: Box<Type> },
+    Poly {
+        vars: Vec<String>,
+        ty: Box<Type>,
+    },
+    Fun {
+        arg: Box<Type>,
+        result: Box<Type>,
+    },
 }
 
 impl Type {
@@ -19,8 +24,7 @@ impl Type {
 
     fn print_inner(&self, depth: u32) -> String {
         match self {
-            Type::Int => "Int".to_string(),
-            Type::Bool => "Bool".to_string(),
+            Type::Constructor(con) => con.to_string(),
             Type::Var(s) => s.clone(),
             Type::Existential(e) => format!("{{{}}}", e.clone()),
             Type::Poly { vars, ty } => {
@@ -42,7 +46,7 @@ impl Type {
 
     pub fn is_mono(&self) -> bool {
         match self {
-            Type::Var(_) | Type::Existential(_) | Type::Int | Type::Bool => true,
+            Type::Var(_) | Type::Existential(_) | Type::Constructor(_) => true,
             Type::Poly { .. } => false,
             Type::Fun { arg, result } => arg.is_mono() && result.is_mono(),
         }
@@ -68,15 +72,14 @@ impl Type {
                 });
                 res.extend(free_in_ty);
             }
-            Type::Int | Type::Bool => {}
+            Type::Constructor(_) => {}
         }
         res
     }
 
     pub fn subst(&self, var: &String, replacement: &Type) -> Type {
         match self {
-            Type::Bool => Type::Bool,
-            Type::Int => Type::Int,
+            Type::Constructor(_) => self.clone(),
             Type::Var(v) | Type::Existential(v) => {
                 if v == var {
                     replacement.clone()
@@ -102,7 +105,7 @@ impl Type {
     }
     pub fn subst_mut(&mut self, var: &String, replacement: &Type) {
         match self {
-            Type::Bool | Type::Int => {}
+            Type::Constructor(_) => {}
             Type::Var(v) | Type::Existential(v) => {
                 if v == var {
                     *self = replacement.clone();
@@ -123,6 +126,13 @@ impl Type {
 
 // Smart constructors
 impl Type {
+    pub fn int() -> Self {
+        Type::Constructor("Int".to_string())
+    }
+    pub fn boolean() -> Self {
+        Type::Constructor("Bool".to_string())
+    }
+
     fn var(str: &str) -> Self {
         Type::Var(str.to_string())
     }
@@ -336,8 +346,7 @@ impl Context {
 
     fn wf_type(&self, ty: &Type) -> bool {
         match ty {
-            Type::Bool => true,
-            Type::Int => true,
+            Type::Constructor(_) => true,
             Type::Poly { vars, ty } => self.forall_wf(vars, ty),
             Type::Fun { arg, result } => self.arrow_wf(arg, result),
             Type::Var(var) => self.u_var_wf(var),
@@ -374,8 +383,7 @@ impl Context {
 
     fn apply(&self, ty: &Type) -> Type {
         match ty {
-            Type::Bool => Type::Bool,
-            Type::Int => Type::Int,
+            Type::Constructor(_) => ty.clone(),
             Type::Var(v) => Type::Var(v.clone()),
             Type::Existential(ex) => self
                 .find_solved(&ex)
@@ -513,8 +521,7 @@ impl TypeChecker {
         assert!(ctx.wf_type(ty2));
 
         match (ty1, ty2) {
-            (Type::Int, Type::Int) => Ok(ctx),
-            (Type::Bool, Type::Bool) => Ok(ctx),
+            (Type::Constructor(con1), Type::Constructor(con2)) if con1 == con2 => Ok(ctx),
             (Type::Var(v1), Type::Var(v2)) if v1 == v2 => Ok(ctx),
             (Type::Existential(e1), Type::Existential(e2)) if e1 == e2 => Ok(ctx),
             (
@@ -724,8 +731,8 @@ impl TypeChecker {
 
     fn check(&mut self, ctx: Context, expr: &Expr, ty: &Type) -> Result<Context, TypeError> {
         match (expr, ty) {
-            (Expr::Literal(Literal::Int(_)), Type::Int) => Ok(ctx),
-            (Expr::Literal(Literal::Bool(_)), Type::Bool) => Ok(ctx),
+            (Expr::Literal(Literal::Int(_)), ty) if ty == &Type::int() => Ok(ctx),
+            (Expr::Literal(Literal::Bool(_)), ty) if ty == &Type::boolean() => Ok(ctx),
             (Expr::Lambda { binder, body }, Type::Fun { arg, result }) => {
                 // ->l
                 let mut new_ctx = ctx;
@@ -741,7 +748,8 @@ impl TypeChecker {
                 let mut new_ctx = ctx;
                 let anno_elem = ContextElem::Anno(binder_fresh.clone(), ty_binder);
                 new_ctx.push(anno_elem);
-                let mut res_ctx = self.check(new_ctx, &body.subst(binder, &Expr::Var(binder_fresh)), ty)?;
+                let res_ctx =
+                    self.check(new_ctx, &body.subst(binder, &Expr::Var(binder_fresh)), ty)?;
                 Ok(res_ctx)
             }
             (_, Type::Poly { vars, ty }) => {
@@ -771,8 +779,8 @@ impl TypeChecker {
 
     fn infer(&mut self, ctx: Context, expr: &Expr) -> Result<(Context, Type), TypeError> {
         match expr {
-            Expr::Literal(Literal::Int(_)) => Ok((ctx, Type::Int)),
-            Expr::Literal(Literal::Bool(_)) => Ok((ctx, Type::Bool)),
+            Expr::Literal(Literal::Int(_)) => Ok((ctx, Type::int())),
+            Expr::Literal(Literal::Bool(_)) => Ok((ctx, Type::boolean())),
             Expr::Var(var) => {
                 // Var
                 let res = match ctx.find_var(var) {
@@ -796,7 +804,6 @@ impl TypeChecker {
                 let mut tmp_ctx = ctx;
                 tmp_ctx.push(ContextElem::Anno(binder_fresh.clone(), ty_binder));
                 self.infer(tmp_ctx, &body.subst(binder, &Expr::Var(binder_fresh)))
-
             }
             Expr::Lambda { binder, body } => {
                 // ->l=>
@@ -889,9 +896,9 @@ impl TypeChecker {
         let initial_ctx = Context::new(vec![
             ContextElem::Anno(
                 "add".to_string(),
-                Type::fun(Type::Int, Type::fun(Type::Int, Type::Int)),
+                Type::fun(Type::int(), Type::fun(Type::int(), Type::int())),
             ),
-            ContextElem::Anno("pi".to_string(), Type::Int),
+            ContextElem::Anno("pi".to_string(), Type::int()),
         ]);
         self.infer(initial_ctx, expr).map(|x| {
             debug!("synth_ctx: {:?}", x.0);
@@ -907,15 +914,15 @@ mod tests {
     #[test]
     fn subst_mut() {
         let mut ty = Type::var("x");
-        ty.subst_mut(&"x".to_string(), &Type::Int);
-        assert_eq!(ty, Type::Int);
+        ty.subst_mut(&"x".to_string(), &Type::int());
+        assert_eq!(ty, Type::int());
     }
 
     #[test]
     fn subst_mut_fun() {
         let mut ty = Type::fun(Type::var("a"), Type::var("b"));
-        ty.subst_mut(&"a".to_string(), &Type::Int);
-        assert_eq!(ty, Type::fun(Type::Int, Type::var("b")));
+        ty.subst_mut(&"a".to_string(), &Type::int());
+        assert_eq!(ty, Type::fun(Type::int(), Type::var("b")));
     }
 
     #[test]
@@ -923,12 +930,12 @@ mod tests {
         let ctx = Context::new(vec![
             ContextElem::Universal("x".to_string()),
             ContextElem::ExVar("alpha".to_string()),
-            ContextElem::Anno("var".to_string(), Type::Int),
+            ContextElem::Anno("var".to_string(), Type::int()),
         ]);
         let expected = Context::new(vec![
             ContextElem::Universal("x".to_string()),
             ContextElem::ExVarSolved("alpha".to_string(), Type::Var("x".to_string())),
-            ContextElem::Anno("var".to_string(), Type::Int),
+            ContextElem::Anno("var".to_string(), Type::int()),
         ]);
         let new_ctx = ctx.solve(&"alpha".to_string(), Type::Var("x".to_string()));
         assert_eq!(new_ctx, Some(expected));
@@ -939,7 +946,7 @@ mod tests {
         let mut tc = TypeChecker::new();
         let ctx = Context::new(vec![]);
         let a = Type::poly(vec!["a"], Type::var("a"));
-        let b = Type::Int;
+        let b = Type::int();
         // (forall a. a) <: Int
         let res = tc.subtype(ctx, &a, &b);
         assert_eq!(res, Ok(Context::new(vec![])));
