@@ -27,7 +27,10 @@ impl Type {
             },
             ref ty if *ty == bi_types::Type::int() => Type::Int,
             ref ty if *ty == bi_types::Type::boolean() => Type::Bool,
-            t => panic!("Type can't handle {}", t.print()),
+            t => {
+                error!("Type can't handle {}", t.print());
+                Type::Int
+            },
         }
     }
 
