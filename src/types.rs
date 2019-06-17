@@ -288,7 +288,7 @@ impl TypeChecker {
                     },
                 )?;
                 let ty_res = TypeChecker::apply_subst(&s3, ty_res);
-                let s = TypeChecker::compose_subst(TypeChecker::compose_subst(s1, s2), s3);
+                let s = TypeChecker::compose_subst(TypeChecker::compose_subst(s3, s2), s1);
                 Ok((ty_res, s))
             }
             Expr::Ann { expr, ty } => {
