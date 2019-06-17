@@ -1,10 +1,18 @@
 use crate::bi_types;
+use crate::types;
 use crate::grammar;
 use crate::term;
 use crate::term::Term;
 use crate::token;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
+
+fn print_ty_res(ty_res: Result<types::Type, types::TypeError>) -> String {
+    match ty_res {
+        Err(err) => err.print(),
+        Ok(ty) => ty.print(),
+    }
+}
 
 fn print_bi_ty_res(ty_res: Result<bi_types::Type, bi_types::TypeError>) -> String {
     match ty_res {
@@ -28,7 +36,10 @@ pub fn run_term(input: &str) {
         Ok(res) => {
             let mut type_checker = bi_types::TypeChecker::new();
             let ty_res = type_checker.synth(&res);
-            info!("Inferred: {}", print_bi_ty_res(ty_res));
+            info!("BiInferred: {}", print_bi_ty_res(ty_res));
+            let mut type_checker = types::TypeChecker::new();
+            let ty_res = type_checker.infer_expr(&res);
+            info!("Inferred: {}", print_ty_res(ty_res));
             let eval_res = Term::eval_expr(&res);
             info!("Evaled: {}", print_eval_res(eval_res));
         }
