@@ -1,9 +1,9 @@
 use crate::bi_types;
-use crate::types;
 use crate::grammar;
 use crate::term;
 use crate::term::Term;
 use crate::token;
+use crate::types;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 

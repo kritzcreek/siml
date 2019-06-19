@@ -43,9 +43,12 @@ fn watch_file() -> notify::Result<()> {
 }
 
 fn run_file() {
-    let source_file = fs::read_to_string("./examples.siml").expect("Failed to read the source file.");
+    let source_file =
+        fs::read_to_string("./examples.siml").expect("Failed to read the source file.");
     for line in source_file.split(";") {
-        if line.trim() == "" { continue; }
+        if line.trim() == "" {
+            continue;
+        }
         info!("{}", line);
         repl::run_term(line);
         println!();

@@ -19,12 +19,25 @@ impl Literal {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Expr {
-    App { func: Box<Expr>, arg: Box<Expr> },
-    Lambda { binder: String, body: Box<Expr> },
-    Let { binder: String, expr: Box<Expr>, body: Box<Expr> },
+    App {
+        func: Box<Expr>,
+        arg: Box<Expr>,
+    },
+    Lambda {
+        binder: String,
+        body: Box<Expr>,
+    },
+    Let {
+        binder: String,
+        expr: Box<Expr>,
+        body: Box<Expr>,
+    },
     Var(String),
     Literal(Literal),
-    Ann { expr: Box<Expr>, ty: Type },
+    Ann {
+        expr: Box<Expr>,
+        ty: Type,
+    },
 }
 
 impl Expr {
@@ -36,7 +49,9 @@ impl Expr {
         match self {
             Expr::Var(s) => s.clone(),
             Expr::Lambda { binder, body } => format!("(\\{}. {})", binder, body.print()),
-            Expr::Let { binder, expr, body } => format!("let {} = {} in {}", binder, expr.print(), body.print()),
+            Expr::Let { binder, expr, body } => {
+                format!("let {} = {} in {}", binder, expr.print(), body.print())
+            }
             Expr::App { func, arg } => parens_if(
                 depth > 0,
                 format!("{} {}", func.print_inner(depth), arg.print_inner(depth + 1)),
