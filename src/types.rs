@@ -2,6 +2,8 @@ use crate::bi_types;
 use crate::expr::{Expr, Literal};
 use crate::utils::*;
 use std::collections::{HashMap, HashSet};
+use std::iter;
+use std::iter::FromIterator;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Type {
@@ -30,7 +32,7 @@ impl Type {
             t => {
                 error!("Type can't handle {}", t.print());
                 Type::Int
-            },
+            }
         }
     }
 
@@ -97,7 +99,72 @@ impl TypeError {
 
 type Environment = HashMap<String, Scheme>;
 
-type Substitution = HashMap<String, Type>;
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct Substitution(pub HashMap<String, Type>);
+
+impl Substitution {
+    fn new() -> Substitution {
+        Substitution(HashMap::new())
+    }
+
+    fn singleton(var: String, ty: Type) -> Substitution {
+        Substitution(HashMap::from_iter(iter::once((var, ty))))
+    }
+
+    fn remove(&self, vars: &Vec<String>) -> Substitution {
+        let mut new_subst = self.0.clone();
+        vars.iter().for_each(|var| {
+            new_subst.remove(var);
+        });
+        Substitution(new_subst)
+    }
+
+    fn get(&self, var: &String) -> Option<&Type> {
+        self.0.get(var)
+    }
+
+    fn compose(mut self, other: Substitution) -> Substitution {
+        for (var, ty) in other.0.into_iter() {
+            self.0.insert(var, self.apply(ty));
+        }
+        self
+    }
+
+    fn apply(&self, ty: Type) -> Type {
+        match ty {
+            Type::Var(x) => match self.get(&x) {
+                None => Type::Var(x),
+                Some(ty) => ty.clone(),
+            },
+            Type::Fun { arg, result } => Type::Fun {
+                arg: Box::new(self.apply(*arg)),
+                result: Box::new(self.apply(*result)),
+            },
+            t => t,
+        }
+    }
+
+    fn apply_scheme(&self, scheme: Scheme) -> Scheme {
+        Scheme {
+            ty: self.remove(&scheme.vars).apply(scheme.ty),
+            vars: scheme.vars,
+        }
+    }
+
+    fn apply_env(&self, env: &Environment) -> Environment {
+        let mut new_env = env.clone();
+        for scheme in new_env.values_mut() {
+            *scheme = self.apply_scheme(scheme.clone());
+        }
+        new_env
+    }
+}
+
+impl FromIterator<(String, Type)> for Substitution {
+    fn from_iter<I: IntoIterator<Item = (String, Type)>>(iter: I) -> Self {
+        Substitution(iter.into_iter().collect())
+    }
+}
 
 pub struct TypeChecker {
     supply: u32,
@@ -117,77 +184,29 @@ impl TypeChecker {
         Type::Var(self.fresh_name(&"u".to_string()))
     }
 
-    fn apply_subst_scheme(subst: &Substitution, scheme: Scheme) -> Scheme {
-        let mut new_subst = subst.clone();
-        scheme.vars.iter().for_each(|var| {
-            new_subst.remove(var);
-        });
-        Scheme {
-            vars: scheme.vars,
-            ty: TypeChecker::apply_subst(&new_subst, scheme.ty),
-        }
-    }
-
-    fn apply_subst_env(subst: &Substitution, env: &Environment) -> Environment {
-        let mut new_env = env.clone();
-        for scheme in new_env.values_mut() {
-            *scheme = TypeChecker::apply_subst_scheme(subst, scheme.clone());
-        }
-        new_env
-    }
-
-    fn apply_subst(subst: &Substitution, ty: Type) -> Type {
-        match ty {
-            Type::Var(x) => match subst.get(&x) {
-                None => Type::Var(x),
-                Some(ty) => ty.clone(),
-            },
-            Type::Fun { arg, result } => Type::Fun {
-                arg: Box::new(TypeChecker::apply_subst(subst, *arg)),
-                result: Box::new(TypeChecker::apply_subst(subst, *result)),
-            },
-            t => t,
-        }
-    }
-
-    fn compose_subst(subst1: Substitution, subst2: Substitution) -> Substitution {
-        let mut res = subst1.clone();
-        for (var, ty) in subst2.clone().iter() {
-            res.insert(
-                var.to_string(),
-                TypeChecker::apply_subst(&subst1, ty.clone()),
-            );
-        }
-        res
-    }
-
     fn instantiate(&mut self, scheme: &Scheme) -> Type {
         let subst: Substitution = scheme
             .vars
             .iter()
             .map(|v| (v.clone(), Type::Var(self.fresh_name(v))))
             .collect();
-        TypeChecker::apply_subst(&subst, scheme.ty.clone())
+        subst.apply(scheme.ty.clone())
     }
 
     fn var_bind(var: String, ty: Type) -> Result<Substitution, TypeError> {
         match ty {
             Type::Var(x) => {
                 if x == var {
-                    Ok(HashMap::new())
+                    Ok(Substitution::new())
                 } else {
-                    let mut res = HashMap::new();
-                    res.insert(var, Type::Var(x));
-                    Ok(res)
+                    Ok(Substitution::singleton(var, Type::Var(x)))
                 }
             }
             t => {
                 if t.free_vars().contains(&var) {
                     Err(TypeError::OccursCheck(var))
                 } else {
-                    let mut res = HashMap::new();
-                    res.insert(var, t);
-                    Ok(res)
+                    Ok(Substitution::singleton(var, t))
                 }
             }
         }
@@ -195,8 +214,8 @@ impl TypeChecker {
 
     fn unify(t1: Type, t2: Type) -> Result<Substitution, TypeError> {
         match (t1, t2) {
-            (Type::Int, Type::Int) => Ok(HashMap::new()),
-            (Type::Bool, Type::Bool) => Ok(HashMap::new()),
+            (Type::Int, Type::Int) => Ok(Substitution::new()),
+            (Type::Bool, Type::Bool) => Ok(Substitution::new()),
             (Type::Var(x), t) => TypeChecker::var_bind(x, t),
             (t, Type::Var(x)) => TypeChecker::var_bind(x, t),
             (
@@ -210,11 +229,8 @@ impl TypeChecker {
                 },
             ) => {
                 let s1 = TypeChecker::unify(*arg1, *arg2)?;
-                let s2 = TypeChecker::unify(
-                    TypeChecker::apply_subst(&s1, *result1),
-                    TypeChecker::apply_subst(&s1, *result2),
-                )?;
-                Ok(TypeChecker::compose_subst(s1, s2))
+                let s2 = TypeChecker::unify(s1.apply(*result1), s1.apply(*result2))?;
+                Ok(s1.compose(s2))
             }
             (t1, t2) => Err(TypeError::Unification(t1, t2)),
         }
@@ -242,7 +258,7 @@ impl TypeChecker {
         match expr {
             Expr::Var(x) => match env.get(x) {
                 None => Err(TypeError::UnboundName(x.clone())),
-                Some(scheme) => Ok((self.instantiate(scheme), HashMap::new())),
+                Some(scheme) => Ok((self.instantiate(scheme), Substitution::new())),
             },
             Expr::Lambda { binder, body } => {
                 let ty_binder = self.fresh_var();
@@ -257,7 +273,7 @@ impl TypeChecker {
                 let (ty_body, s) = self.infer(&tmp_env, body)?;
                 Ok((
                     Type::Fun {
-                        arg: Box::new(TypeChecker::apply_subst(&s, ty_binder)),
+                        arg: Box::new(s.apply(ty_binder)),
                         result: Box::new(ty_body),
                     },
                     s,
@@ -274,42 +290,36 @@ impl TypeChecker {
                     },
                 );
                 let (ty_body, s2) = self.infer(&tmp_env, body)?;
-                Ok((
-                    ty_body,
-                    TypeChecker::compose_subst(s1, s2),
-                ))
+                Ok((ty_body, s1.compose(s2)))
             }
             Expr::App { func, arg } => {
                 let ty_res = self.fresh_var();
                 let (ty_fun, s1) = self.infer(env, func)?;
-                let (ty_arg, s2) = self.infer(&TypeChecker::apply_subst_env(&s1, env), arg)?;
+                let (ty_arg, s2) = self.infer(&s1.apply_env(&env), arg)?;
                 let s3 = TypeChecker::unify(
-                    TypeChecker::apply_subst(&s2, ty_fun),
+                    s2.apply(ty_fun),
                     Type::Fun {
                         arg: Box::new(ty_arg),
                         result: Box::new(ty_res.clone()),
                     },
                 )?;
-                let ty_res = TypeChecker::apply_subst(&s3, ty_res);
-                let s = TypeChecker::compose_subst(TypeChecker::compose_subst(s3, s2), s1);
+                let ty_res = s3.apply(ty_res);
+                let s = s3.compose(s2).compose(s1);
                 Ok((ty_res, s))
             }
             Expr::Ann { expr, ty } => {
                 let ty = Type::from_bi_type(ty.clone());
                 let (ty_inf, s) = self.infer(env, expr)?;
                 match TypeChecker::unify(ty.clone(), ty_inf.clone()) {
-                    Ok(s1) => Ok((
-                        TypeChecker::apply_subst(&s1, ty_inf),
-                        TypeChecker::compose_subst(s, s1),
-                    )),
+                    Ok(s1) => Ok((s1.apply(ty_inf), s.compose(s1))),
                     Err(_) => Err(TypeError::AnnotationMismatch {
                         ty: ty_inf,
                         ann: ty.clone(),
                     }),
                 }
             }
-            Expr::Literal(Literal::Int(_)) => Ok((Type::Int, HashMap::new())),
-            Expr::Literal(Literal::Bool(_)) => Ok((Type::Bool, HashMap::new())),
+            Expr::Literal(Literal::Int(_)) => Ok((Type::Int, Substitution::new())),
+            Expr::Literal(Literal::Bool(_)) => Ok((Type::Bool, Substitution::new())),
         }
     }
 }
