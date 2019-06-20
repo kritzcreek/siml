@@ -15,8 +15,8 @@ pub enum Type {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Scheme {
-    vars: Vec<String>,
-    ty: Type,
+    pub vars: Vec<String>,
+    pub ty: Type,
 }
 
 impl Type {
@@ -125,14 +125,14 @@ impl TypeError {
 type Environment = HashMap<String, Scheme>;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-struct Substitution(pub HashMap<String, Type>);
+pub struct Substitution(pub HashMap<String, Type>);
 
 impl Substitution {
-    fn new() -> Substitution {
+    pub fn new() -> Substitution {
         Substitution(HashMap::new())
     }
 
-    fn singleton(var: String, ty: Type) -> Substitution {
+    pub fn singleton(var: String, ty: Type) -> Substitution {
         Substitution(HashMap::from_iter(iter::once((var, ty))))
     }
 
@@ -279,7 +279,11 @@ impl TypeChecker {
         self.infer(&init_env, expr).map(|(ty, _)| ty)
     }
 
-    fn infer(&mut self, env: &Environment, expr: &Expr) -> Result<(Type, Substitution), TypeError> {
+    pub fn infer(
+        &mut self,
+        env: &Environment,
+        expr: &Expr,
+    ) -> Result<(Type, Substitution), TypeError> {
         match expr {
             Expr::Var(x) => match env.get(x) {
                 None => Err(TypeError::UnboundName(x.clone())),
