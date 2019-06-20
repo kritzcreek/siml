@@ -74,10 +74,11 @@ impl Type {
     }
 
     pub fn generalize(&self, substitution: &Substitution) -> Scheme {
+        let subst_free = substitution.free_vars();
         let free_vars: Vec<String> = self
             .free_vars_ordered()
             .into_iter()
-            .filter(|x| substitution.get(x).is_none())
+            .filter(|x| !subst_free.contains(x))
             .collect();
 
         let new_vars: Vec<String> = (0..free_vars.len())
@@ -134,6 +135,13 @@ impl Substitution {
 
     pub fn singleton(var: String, ty: Type) -> Substitution {
         Substitution(HashMap::from_iter(iter::once((var, ty))))
+    }
+
+    pub fn free_vars(&self) -> HashSet<String> {
+        self.0
+            .values()
+            .flat_map(|ty| ty.free_vars())
+            .collect()
     }
 
     fn remove(&self, vars: &Vec<String>) -> Substitution {

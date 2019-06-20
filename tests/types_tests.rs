@@ -1,4 +1,4 @@
-use siml::expr::{Expr, Literal};
+use siml::expr::{Expr};
 use siml::grammar::{ExprParser, TypeParser};
 use siml::token::Lexer;
 use siml::types::{Scheme, Substitution, Type, TypeChecker};
@@ -54,7 +54,7 @@ fn it_generalizes() {
 #[test]
 fn it_generalizes_while_ignoring_vars_in_the_subst() {
     assert_eq!(
-        ty("a -> b").generalize(&Substitution::singleton("a".to_string(), ty("Int"))),
+        ty("a -> b").generalize(&Substitution::singleton("u1".to_string(), ty("a"))),
         Scheme {
             vars: vec!["gen0".to_string()],
             ty: ty("a -> gen0")
