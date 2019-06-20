@@ -56,19 +56,44 @@ impl Type {
         }
     }
 
-    pub fn free_vars(&self) -> HashSet<String> {
-        let mut res = HashSet::new();
+    pub fn free_vars_ordered(&self) -> Vec<String> {
+        let mut res = vec![];
         match self {
-            Type::Var(x) => {
-                res.insert(x.clone());
-            }
+            Type::Var(x) => res.push(x.clone()),
             Type::Fun { arg, result } => {
-                res.extend(arg.free_vars());
-                res.extend(result.free_vars());
+                res.append(&mut arg.free_vars_ordered());
+                res.append(&mut result.free_vars_ordered());
             }
             _ => {}
         }
         res
+    }
+
+    pub fn free_vars(&self) -> HashSet<String> {
+        HashSet::from_iter(self.free_vars_ordered().into_iter())
+    }
+
+    pub fn generalize(&self, substitution: &Substitution) -> Scheme {
+        let free_vars: Vec<String> = self
+            .free_vars_ordered()
+            .into_iter()
+            .filter(|x| substitution.get(x).is_none())
+            .collect();
+
+        let new_vars: Vec<String> = (0..free_vars.len())
+            .take(free_vars.len())
+            .map(|v| format!("gen{}", v))
+            .collect();
+
+        let subst: Substitution = free_vars
+            .into_iter()
+            .zip(new_vars.iter().map(|v| Type::Var(v.clone())))
+            .collect();
+
+        Scheme {
+            vars: new_vars.to_vec(),
+            ty: subst.apply(self.clone()),
+        }
     }
 }
 
