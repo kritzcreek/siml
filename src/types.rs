@@ -2,6 +2,7 @@ use crate::bi_types;
 use crate::expr::{Expr, Literal};
 use crate::utils::*;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::iter;
 use std::iter::FromIterator;
 
@@ -11,6 +12,12 @@ pub enum Type {
     Bool,
     Var(String),
     Fun { arg: Box<Type>, result: Box<Type> },
+}
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.print())
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -30,7 +37,7 @@ impl Type {
             ref ty if *ty == bi_types::Type::int() => Type::Int,
             ref ty if *ty == bi_types::Type::boolean() => Type::Bool,
             t => {
-                error!("Type can't handle {}", t.print());
+                error!("Type can't handle {}", t);
                 Type::Int
             }
         }
@@ -109,15 +116,12 @@ pub enum TypeError {
 impl TypeError {
     pub fn print(&self) -> String {
         match self {
-            TypeError::Unification(ty1, ty2) => {
-                format!("Couldn't match type {} with {}", ty1.print(), ty2.print())
-            }
+            TypeError::Unification(ty1, ty2) => format!("Couldn't match type {} with {}", ty1, ty2),
             TypeError::UnboundName(name) => format!("Unbound name: {} ", name),
             TypeError::OccursCheck(name) => format!("The occurs check failed for: {}", name),
             TypeError::AnnotationMismatch { ann, ty } => format!(
                 "The type: {} failed to check against the annotation: {}",
-                ty.print(),
-                ann.print()
+                ty, ann
             ),
         }
     }
@@ -138,10 +142,7 @@ impl Substitution {
     }
 
     pub fn free_vars(&self) -> HashSet<String> {
-        self.0
-            .values()
-            .flat_map(|ty| ty.free_vars())
-            .collect()
+        self.0.values().flat_map(|ty| ty.free_vars()).collect()
     }
 
     fn remove(&self, vars: &Vec<String>) -> Substitution {

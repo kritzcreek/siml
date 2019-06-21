@@ -15,11 +15,10 @@ impl Eval {
             Expr::App { func, arg } => {
                 debug!(
                     "Evaling: {}",
-                    (Expr::App {
+                    Expr::App {
                         func: func.clone(),
                         arg: arg.clone()
-                    })
-                    .print()
+                    }
                 );
                 match self.eval(*func) {
                     Expr::Lambda { binder, body } => {
@@ -30,7 +29,7 @@ impl Eval {
                             }),
                             arg: arg.clone(),
                         };
-                        debug!("[fun] ==>\n  {} ", e1.print());
+                        debug!("[fun] ==>\n  {} ", e1);
                         let arg = self.eval(*arg);
                         let e2 = Expr::App {
                             func: Box::new(Expr::Lambda {
@@ -39,9 +38,9 @@ impl Eval {
                             }),
                             arg: Box::new(arg.clone()),
                         };
-                        debug!("[arg] ==>\n  {}", e2.print());
+                        debug!("[arg] ==>\n  {}", e2);
                         let new_body = self.substitute(&body, &binder, &arg);
-                        debug!("[sub] ==>\n  {}", &new_body.print());
+                        debug!("[sub] ==>\n  {}", &new_body);
                         self.eval(new_body)
                     }
                     new_func => Expr::App {

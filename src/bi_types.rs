@@ -1,6 +1,7 @@
 use crate::expr::{Expr, Literal};
 use crate::utils::parens_if;
 use std::collections::HashSet;
+use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Type {
@@ -21,6 +22,12 @@ pub enum Type {
     },
 }
 
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.print())
+    }
+}
+
 impl Type {
     pub fn print(&self) -> String {
         self.print_inner(0)
@@ -35,7 +42,7 @@ impl Type {
                 let vars_printed: String = vars
                     .iter()
                     .fold("".to_string(), |acc, var| format!("{} {}", acc, var));
-                format!("∀{}. {}", vars_printed, ty.print())
+                format!("∀{}. {}", vars_printed, ty)
             }
             Type::Fun { arg, result } => parens_if(
                 depth > 0,
@@ -50,7 +57,7 @@ impl Type {
                 arguments,
             } => format!(
                 "{} {}",
-                type_constructor.print(),
+                type_constructor,
                 arguments
                     .iter()
                     .map(|ty| ty.print())
@@ -217,6 +224,12 @@ pub struct Context {
     elems: Vec<ContextElem>,
 }
 
+impl fmt::Display for Context {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.print())
+    }
+}
+
 impl Context {
     pub fn new(elems: Vec<ContextElem>) -> Context {
         Context { elems }
@@ -224,11 +237,9 @@ impl Context {
 
     pub fn print(&self) -> String {
         let mut res = "{\n".to_string();
-        self.elems.iter().for_each(|ce| {
-            res += "  ";
-            res += &ce.print();
-            res += ",\n";
-        });
+        self.elems
+            .iter()
+            .for_each(|ce| res += &format!("  {},\n", &ce));
         res += "}";
         res
     }
@@ -476,14 +487,20 @@ pub enum ContextElem {
     Anno(String, Type),
 }
 
+impl fmt::Display for ContextElem {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.print())
+    }
+}
+
 impl ContextElem {
     pub fn print(&self) -> String {
         match self {
             ContextElem::Universal(u) => u.clone(),
             ContextElem::ExVar(ex) => format!("{{{}}}", ex),
-            ContextElem::ExVarSolved(ex, ty) => format!("{{{}}} = {}", ex, ty.print()),
+            ContextElem::ExVarSolved(ex, ty) => format!("{{{}}} = {}", ex, ty),
             ContextElem::Marker(marker) => format!("|> {}", marker),
-            ContextElem::Anno(var, ty) => format!("{} : {}", var, ty.print()),
+            ContextElem::Anno(var, ty) => format!("{} : {}", var, ty),
         }
     }
 }
@@ -500,22 +517,15 @@ pub enum TypeError {
 impl TypeError {
     pub fn print(&self) -> String {
         match self {
-            TypeError::Subtype(ty1, ty2) => format!(
-                "Can't figure out subtyping between: {} <: {}",
-                ty1.print(),
-                ty2.print()
-            ),
-            TypeError::UnknownVar(var) => format!("Unknown variable: {}", var),
-            TypeError::InvalidAnnotation(ty) => {
-                format!("{} is not a valid annotation here.", ty.print())
+            TypeError::Subtype(ty1, ty2) => {
+                format!("Can't figure out subtyping between: {} <: {}", ty1, ty2)
             }
-            TypeError::IsNotAFunction(ty) => format!("{} is not a function", ty.print()),
-            TypeError::ExistentialEscaped(ctx, ty, ex) => format!(
-                "An existential escaped, go get it! {} {} {}",
-                ctx.print(),
-                ty.print(),
-                ex
-            ),
+            TypeError::UnknownVar(var) => format!("Unknown variable: {}", var),
+            TypeError::InvalidAnnotation(ty) => format!("{} is not a valid annotation here.", ty),
+            TypeError::IsNotAFunction(ty) => format!("{} is not a function", ty),
+            TypeError::ExistentialEscaped(ctx, ty, ex) => {
+                format!("An existential escaped, go get it! {} {} {}", ctx, ty, ex)
+            }
         }
     }
 }
@@ -578,12 +588,7 @@ impl TypeChecker {
         ty1: &Type,
         ty2: &Type,
     ) -> Result<Context, TypeError> {
-        debug!(
-            "[subtype] \n{} ({}) ({})",
-            ctx.print(),
-            ty1.print(),
-            ty2.print()
-        );
+        debug!("[subtype] \n{} ({}) ({})", ctx, ty1, ty2);
         assert!(ctx.wf_type(ty1));
         assert!(ctx.wf_type(ty2));
 
@@ -674,12 +679,7 @@ impl TypeChecker {
         ex: &String,
         ty: &Type,
     ) -> Result<Context, TypeError> {
-        debug!(
-            "[instantiate_l]\n{} ({}) <=: ({})",
-            ctx.print(),
-            ex,
-            ty.print()
-        );
+        debug!("[instantiate_l]\n{} ({}) <=: ({})", ctx, ex, ty);
         match ty {
             Type::Existential(ex2) if ctx.existentials_ordered(ex, ex2) => {
                 // InstLReac
@@ -748,12 +748,7 @@ impl TypeChecker {
         ty: &Type,
         ex: &String,
     ) -> Result<Context, TypeError> {
-        debug!(
-            "[instantiate_r] \n{} ({}) <=: ({})",
-            ctx.print(),
-            ty.print(),
-            ex
-        );
+        debug!("[instantiate_r] \n{} ({}) <=: ({})", ctx, ty, ex);
         match ty {
             Type::Existential(ex2) if ctx.existentials_ordered(ex, ex2) => {
                 // InstRReach
@@ -799,7 +794,7 @@ impl TypeChecker {
             }
             ty if ty.is_mono() => {
                 // InstRSolve
-                debug!("[InstRSolve] {} := {}", ex, ty.print());
+                debug!("[InstRSolve] {} := {}", ex, ty);
                 let mut tmp_ctx = ctx.clone();
                 tmp_ctx.drop_marker(ContextElem::ExVar(ex.to_string()));
                 if tmp_ctx.wf_type(ty) {
@@ -930,12 +925,7 @@ impl TypeChecker {
         match ty {
             Type::Poly { vars, ty: ty1 } => {
                 // forall App
-                debug!(
-                    "[forall App] {} {} . {}",
-                    ctx.print(),
-                    ty.print(),
-                    expr.print()
-                );
+                debug!("[forall App] {} {} . {}", ctx, ty, expr);
                 let (renamed_ty, fresh_vars) =
                     self.rename_poly(vars, ty1, |v| Type::Existential(v.clone()));
                 let mut new_ctx = ctx;
@@ -970,7 +960,7 @@ impl TypeChecker {
             }
             Type::Fun { arg, result } => {
                 // ->App
-                debug!("[->App] {} . {}", ty.print(), expr.print());
+                debug!("[->App] {} . {}", ty, expr);
                 let res_ctx = self.check(ctx, expr, arg)?;
                 let applied_res = res_ctx.apply(result);
                 Ok((res_ctx, applied_res))

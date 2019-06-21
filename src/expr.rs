@@ -1,6 +1,7 @@
 use crate::bi_types::Type;
 use crate::utils::parens_if;
 use std::collections::HashSet;
+use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Literal {
@@ -40,6 +41,12 @@ pub enum Expr {
     },
 }
 
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.print())
+    }
+}
+
 impl Expr {
     pub fn print(&self) -> String {
         self.print_inner(0)
@@ -48,16 +55,16 @@ impl Expr {
     fn print_inner(&self, depth: u32) -> String {
         match self {
             Expr::Var(s) => s.clone(),
-            Expr::Lambda { binder, body } => format!("(\\{}. {})", binder, body.print()),
+            Expr::Lambda { binder, body } => format!("(\\{}. {})", binder, body),
             Expr::Let { binder, expr, body } => {
-                format!("let {} = {} in {}", binder, expr.print(), body.print())
+                format!("let {} = {} in {}", binder, expr, body)
             }
             Expr::App { func, arg } => parens_if(
                 depth > 0,
                 format!("{} {}", func.print_inner(depth), arg.print_inner(depth + 1)),
             ),
             Expr::Literal(lit) => lit.print(),
-            Expr::Ann { expr, ty } => format!("({} : {})", expr.print(), ty.print()),
+            Expr::Ann { expr, ty } => format!("({} : {})", expr, ty),
         }
     }
 

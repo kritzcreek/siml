@@ -52,7 +52,7 @@ fn run_type(input: &str) {
     match res {
         Err(err) => error!("Parse failure: {:?}", err),
         Ok(res) => {
-            info!("{}", res.print());
+            info!("{}", res);
             info!("Free vars: {:#?}", res.free_vars());
         }
     }

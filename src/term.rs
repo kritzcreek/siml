@@ -1,5 +1,6 @@
 use crate::expr::{Expr, Literal};
 use std::collections::HashMap;
+use std::fmt;
 
 type Env = HashMap<String, Term>;
 
@@ -22,6 +23,12 @@ pub enum Term {
     Literal(Literal),
 }
 
+impl fmt::Display for Term {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.print())
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum EvalError {
     UnknownVar(String),
@@ -32,7 +39,7 @@ impl EvalError {
     pub fn print(&self) -> String {
         match self {
             EvalError::UnknownVar(var) => format!("Unknown variable: {}", var),
-            EvalError::ApplyingNonLambda(term) => format!("{} is not a function", term.print()),
+            EvalError::ApplyingNonLambda(term) => format!("{} is not a function", term),
         }
     }
 }
@@ -127,12 +134,12 @@ impl Term {
         match self {
             Term::Var(s) => s.clone(),
             Term::Literal(lit) => lit.print(),
-            Term::Lambda { binder, body } => format!("(\\{}. {})", binder, body.print()),
+            Term::Lambda { binder, body } => format!("(\\{}. {})", binder, body),
             Term::Closure {
                 binder,
                 body,
                 env: _,
-            } => format!("(\\{}. {})", binder, body.print()),
+            } => format!("(\\{}. {})", binder, body),
             Term::App { func, arg } => parens_if(
                 depth > 0,
                 format!("{} {}", func.print_inner(depth), arg.print_inner(depth + 1)),
