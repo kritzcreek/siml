@@ -6,15 +6,18 @@ edition = "2018"
 build = "build.rs"
 
 [dependencies]
-lalrpop-util = "0.16.3"
-regex = "1"
-log = "*"
-fern = { version = "0.5", features = ["colored"] }
-rustyline = "^3.0.0"
-notify = "4"
+lalrpop-util = "0.17.0"
+regex = "1.1.7"
+log = "0.4.6"
+fern = { version = "0.5.8", features = ["colored"] }
+rustyline = "5.0.0"
+notify = "4.0.12"
 
 [build-dependencies]
-lalrpop = "0.16.3"
+lalrpop = "0.17.0"
+
+[dev-dependencies]
+pretty_assertions = "0.6.1"
 
 [lib]
 name = "siml"

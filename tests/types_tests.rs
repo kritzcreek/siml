@@ -1,4 +1,5 @@
-use siml::expr::{Expr};
+use pretty_assertions::assert_eq;
+use siml::expr::Expr;
 use siml::grammar::{ExprParser, TypeParser};
 use siml::token::Lexer;
 use siml::types::{Scheme, Substitution, Type, TypeChecker};

@@ -56,9 +56,7 @@ impl Expr {
         match self {
             Expr::Var(s) => s.clone(),
             Expr::Lambda { binder, body } => format!("(\\{}. {})", binder, body),
-            Expr::Let { binder, expr, body } => {
-                format!("let {} = {} in {}", binder, expr, body)
-            }
+            Expr::Let { binder, expr, body } => format!("let {} = {} in {}", binder, expr, body),
             Expr::App { func, arg } => parens_if(
                 depth > 0,
                 format!("{} {}", func.print_inner(depth), arg.print_inner(depth + 1)),
