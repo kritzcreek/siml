@@ -26,6 +26,16 @@ pub struct Scheme {
     pub ty: Type,
 }
 
+impl Scheme {
+    pub fn print(&self) -> String {
+        if self.vars.is_empty() {
+            self.ty.print()
+        } else {
+            format!("forall {}. {}", self.vars.join(" "), self.ty.print())
+        }
+    }
+}
+
 impl Type {
     pub fn from_bi_type(ty: bi_types::Type) -> Self {
         match ty {
@@ -88,10 +98,7 @@ impl Type {
             .filter(|x| !subst_free.contains(x))
             .collect();
 
-        let new_vars: Vec<String> = (0..free_vars.len())
-            .take(free_vars.len())
-            .map(|v| format!("gen{}", v))
-            .collect();
+        let new_vars: Vec<String> = (0..free_vars.len()).map(|v| format!("gen{}", v)).collect();
 
         let subst: Substitution = free_vars
             .into_iter()
