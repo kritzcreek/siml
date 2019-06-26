@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::expr::{Expr, Literal};
 use crate::utils::parens_if;
 use std::collections::HashSet;
