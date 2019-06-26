@@ -49,7 +49,7 @@ fn run_file() {
         if line.trim() == "" {
             continue;
         }
-        info!("{}", line);
+        info!("{}", line.trim_start());
         repl::run_term(line);
         println!();
     }
