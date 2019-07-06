@@ -7,9 +7,13 @@ use crate::types;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
-fn print_ty_res(ty_res: Result<types::Type, types::TypeError>) -> String {
+fn print_ty_res(ty_res: Result<types::Type, Vec<types::TypeError>>) -> String {
     match ty_res {
-        Err(err) => err.print(),
+        Err(errs) => errs
+            .into_iter()
+            .map(|err| err.print())
+            .collect::<Vec<String>>()
+            .join("\n"),
         Ok(ty) => ty.print(),
     }
 }

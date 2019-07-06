@@ -12,6 +12,7 @@ pub enum Type {
     Bool,
     Var(String),
     Fun { arg: Box<Type>, result: Box<Type> },
+    Error,
 }
 
 impl fmt::Display for Type {
@@ -57,11 +58,19 @@ impl Type {
         self.print_inner(0)
     }
 
+    fn is_error(&self) -> bool {
+        match self {
+            Type::Error => true,
+            _ => false,
+        }
+    }
+
     fn print_inner(&self, depth: u32) -> String {
         match self {
             Type::Int => "Int".to_string(),
             Type::Bool => "Bool".to_string(),
             Type::Var(s) => s.clone(),
+            Type::Error => "ERR".to_string(),
             Type::Fun { arg, result } => parens_if(
                 depth > 0,
                 format!(
@@ -209,11 +218,15 @@ impl FromIterator<(String, Type)> for Substitution {
 
 pub struct TypeChecker {
     supply: u32,
+    errors: Vec<TypeError>,
 }
 
 impl TypeChecker {
     pub fn new() -> TypeChecker {
-        TypeChecker { supply: 0 }
+        TypeChecker {
+            supply: 0,
+            errors: vec![],
+        }
     }
 
     fn fresh_name(&mut self, name: &String) -> String {
@@ -225,6 +238,14 @@ impl TypeChecker {
         Type::Var(self.fresh_name(&"u".to_string()))
     }
 
+    fn report_error(&mut self, error: TypeError) {
+        self.errors.push(error)
+    }
+
+    fn error_sentinel() -> (Type, Substitution) {
+        (Type::Error, Substitution::new())
+    }
+
     fn instantiate(&mut self, scheme: &Scheme) -> Type {
         let subst: Substitution = scheme
             .vars
@@ -234,31 +255,34 @@ impl TypeChecker {
         subst.apply(scheme.ty.clone())
     }
 
-    fn var_bind(var: String, ty: Type) -> Result<Substitution, TypeError> {
+    fn var_bind(&mut self, var: String, ty: Type) -> Option<Substitution> {
         match ty {
             Type::Var(x) => {
                 if x == var {
-                    Ok(Substitution::new())
+                    Some(Substitution::new())
                 } else {
-                    Ok(Substitution::singleton(var, Type::Var(x)))
+                    Some(Substitution::singleton(var, Type::Var(x)))
                 }
             }
             t => {
                 if t.free_vars().contains(&var) {
-                    Err(TypeError::OccursCheck(var))
+                    self.report_error(TypeError::OccursCheck(var));
+                    None
                 } else {
-                    Ok(Substitution::singleton(var, t))
+                    Some(Substitution::singleton(var, t))
                 }
             }
         }
     }
 
-    fn unify(t1: Type, t2: Type) -> Result<Substitution, TypeError> {
+    fn unify(&mut self, t1: Type, t2: Type) -> Option<Substitution> {
         match (t1, t2) {
-            (Type::Int, Type::Int) => Ok(Substitution::new()),
-            (Type::Bool, Type::Bool) => Ok(Substitution::new()),
-            (Type::Var(x), t) => TypeChecker::var_bind(x, t),
-            (t, Type::Var(x)) => TypeChecker::var_bind(x, t),
+            (Type::Error, _) => None,
+            (_, Type::Error) => None,
+            (Type::Int, Type::Int) => Some(Substitution::new()),
+            (Type::Bool, Type::Bool) => Some(Substitution::new()),
+            (Type::Var(x), t) => self.var_bind(x, t),
+            (t, Type::Var(x)) => self.var_bind(x, t),
             (
                 Type::Fun {
                     arg: arg1,
@@ -268,16 +292,26 @@ impl TypeChecker {
                     arg: arg2,
                     result: result2,
                 },
-            ) => {
-                let s1 = TypeChecker::unify(*arg1, *arg2)?;
-                let s2 = TypeChecker::unify(s1.apply(*result1), s1.apply(*result2))?;
-                Ok(s1.compose(s2))
+            ) => match self.unify(*arg1, *arg2) {
+                None => {
+                    // Even if unifying the argument types failed, we
+                    // try to unify the result types to find potential
+                    // unrelated errors
+                    self.unify(*result1, *result2);
+                    None
+                }
+                Some(s1) => self
+                    .unify(s1.apply(*result1), s1.apply(*result2))
+                    .map(|s2| s1.compose(s2)),
+            },
+            (t1, t2) => {
+                self.report_error(TypeError::Unification(t1, t2));
+                None
             }
-            (t1, t2) => Err(TypeError::Unification(t1, t2)),
         }
     }
 
-    pub fn infer_expr(&mut self, expr: &Expr) -> Result<Type, TypeError> {
+    pub fn infer_expr(&mut self, expr: &Expr) -> Result<Type, Vec<TypeError>> {
         let mut init_env = HashMap::new();
         init_env.insert(
             "add".to_string(),
@@ -292,18 +326,22 @@ impl TypeChecker {
                 },
             },
         );
-        self.infer(&init_env, expr).map(|(ty, _)| ty)
+        let (ty, _) = self.infer(&init_env, expr);
+        if self.errors.is_empty() {
+            Ok(ty)
+        } else {
+            Err(self.errors.clone())
+        }
     }
 
-    pub fn infer(
-        &mut self,
-        env: &Environment,
-        expr: &Expr,
-    ) -> Result<(Type, Substitution), TypeError> {
+    pub fn infer(&mut self, env: &Environment, expr: &Expr) -> (Type, Substitution) {
         match expr {
             Expr::Var(x) => match env.get(x) {
-                None => Err(TypeError::UnboundName(x.clone())),
-                Some(scheme) => Ok((self.instantiate(scheme), Substitution::new())),
+                None => {
+                    self.report_error(TypeError::UnboundName(x.clone()));
+                    TypeChecker::error_sentinel()
+                }
+                Some(scheme) => (self.instantiate(scheme), Substitution::new()),
             },
             Expr::Lambda { binder, body } => {
                 let ty_binder = self.fresh_var();
@@ -315,17 +353,21 @@ impl TypeChecker {
                         ty: ty_binder.clone(),
                     },
                 );
-                let (ty_body, s) = self.infer(&tmp_env, body)?;
-                Ok((
-                    Type::Fun {
-                        arg: Box::new(s.apply(ty_binder)),
-                        result: Box::new(ty_body),
-                    },
-                    s,
-                ))
+                let (ty_body, s) = self.infer(&tmp_env, body);
+                if ty_body.is_error() {
+                    TypeChecker::error_sentinel()
+                } else {
+                    (
+                        Type::Fun {
+                            arg: Box::new(s.apply(ty_binder)),
+                            result: Box::new(ty_body),
+                        },
+                        s,
+                    )
+                }
             }
             Expr::Let { binder, expr, body } => {
-                let (ty_binder, s1) = self.infer(env, expr)?;
+                let (ty_binder, s1) = self.infer(env, expr);
                 let mut tmp_env = env.clone();
                 tmp_env.insert(
                     binder.to_string(),
@@ -334,37 +376,53 @@ impl TypeChecker {
                         ty: ty_binder.clone(),
                     },
                 );
-                let (ty_body, s2) = self.infer(&tmp_env, body)?;
-                Ok((ty_body, s1.compose(s2)))
+                let (ty_body, s2) = self.infer(&tmp_env, body);
+                if ty_binder.is_error() || ty_body.is_error() {
+                    TypeChecker::error_sentinel()
+                } else {
+                    (ty_body, s1.compose(s2))
+                }
             }
             Expr::App { func, arg } => {
                 let ty_res = self.fresh_var();
-                let (ty_fun, s1) = self.infer(env, func)?;
-                let (ty_arg, s2) = self.infer(&s1.apply_env(&env), arg)?;
-                let s3 = TypeChecker::unify(
-                    s2.apply(ty_fun),
-                    Type::Fun {
-                        arg: Box::new(ty_arg),
-                        result: Box::new(ty_res.clone()),
-                    },
-                )?;
-                let ty_res = s3.apply(ty_res);
-                let s = s3.compose(s2).compose(s1);
-                Ok((ty_res, s))
+                let (ty_fun, s1) = self.infer(env, func);
+                let (ty_arg, s2) = self.infer(&s1.apply_env(&env), arg);
+                if ty_fun.is_error() || ty_arg.is_error() {
+                    TypeChecker::error_sentinel()
+                } else {
+                    let unify_result = self.unify(
+                        s2.apply(ty_fun),
+                        Type::Fun {
+                            arg: Box::new(ty_arg),
+                            result: Box::new(ty_res.clone()),
+                        },
+                    );
+                    match unify_result {
+                        Some(s3) => {
+                            let ty_res = s3.apply(ty_res);
+                            let s = s3.compose(s2).compose(s1);
+                            (ty_res, s)
+                        }
+                        None => TypeChecker::error_sentinel(),
+                    }
+                }
             }
             Expr::Ann { expr, ty } => {
                 let ty = Type::from_bi_type(ty.clone());
-                let (ty_inf, s) = self.infer(env, expr)?;
-                match TypeChecker::unify(ty.clone(), ty_inf.clone()) {
-                    Ok(s1) => Ok((s1.apply(ty_inf), s.compose(s1))),
-                    Err(_) => Err(TypeError::AnnotationMismatch {
-                        ty: ty_inf,
-                        ann: ty.clone(),
-                    }),
+                let (ty_inf, s) = self.infer(env, expr);
+                match self.unify(ty.clone(), ty_inf.clone()) {
+                    Some(s1) => (s1.apply(ty_inf), s.compose(s1)),
+                    None => {
+                        self.report_error(TypeError::AnnotationMismatch {
+                            ty: ty_inf,
+                            ann: ty.clone(),
+                        });
+                        TypeChecker::error_sentinel()
+                    }
                 }
             }
-            Expr::Literal(Literal::Int(_)) => Ok((Type::Int, Substitution::new())),
-            Expr::Literal(Literal::Bool(_)) => Ok((Type::Bool, Substitution::new())),
+            Expr::Literal(Literal::Int(_)) => (Type::Int, Substitution::new()),
+            Expr::Literal(Literal::Bool(_)) => (Type::Bool, Substitution::new()),
         }
     }
 }
