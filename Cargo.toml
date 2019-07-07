@@ -6,15 +6,15 @@ edition = "2018"
 build = "build.rs"
 
 [dependencies]
-lalrpop-util = "0.17.0"
-regex = "1.1.7"
+lalrpop-util = "0.17.1"
+regex = "1.1.9"
 log = "0.4.6"
 fern = { version = "0.5.8", features = ["colored"] }
 rustyline = "5.0.0"
 notify = "4.0.12"
 
 [build-dependencies]
-lalrpop = "0.17.0"
+lalrpop = "0.17.1"
 
 [dev-dependencies]
 pretty_assertions = "0.6.1"
