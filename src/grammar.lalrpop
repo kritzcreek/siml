@@ -1,5 +1,5 @@
 use crate::token::Token;
-use crate::expr::{Expr, Literal};
+use crate::expr::{Expr, Literal, Declaration, DataConstructor};
 use crate::types::{Type};
 use crate::bi_types;
 
@@ -12,6 +12,7 @@ extern {
         "bool_literal" => Token::BooleanLiteral(<bool>),
         "forall" => Token::Forall,
         "let" => Token::Let,
+        "type" => Token::Type,
         "in" => Token::In,
         "=" => Token::Equals,
         "\\" => Token::Lambda,
@@ -20,7 +21,22 @@ extern {
         "." => Token::Dot,
         "->" => Token::Arrow,
         ":" => Token::Colon,
+        ";" => Token::Semi,
     }
+}
+
+pub Program: Vec<Declaration> = {
+  Declaration+
+}
+
+pub Declaration: Declaration = {
+ "let" <ident: "identifier"> "=" <expr: Expr> =>
+   Declaration::Value { ident: ident.to_string(), expr },
+ "type" <name: "identifier"> "(" <ty: BiType> ")" ";" =>
+   Declaration::Type
+     { name: name.to_string(),
+       constructors: vec![DataConstructor { name: "Dummy".to_string(), arguments: vec![ty]}],
+     }
 }
 
 pub Expr: Expr = {

@@ -9,10 +9,12 @@ pub enum Token {
     LParen,
     RParen,
     Colon,
+    Semi,
     Arrow,
     Forall,
     Let,
     In,
+    Type,
     Ident(String),
     IntLiteral(i32),
     BooleanLiteral(bool),
@@ -79,6 +81,7 @@ impl<'input> Iterator for Lexer<'input> {
             Some('(') => Some(Token::LParen),
             Some(')') => Some(Token::RParen),
             Some(':') => Some(Token::Colon),
+            Some(';') => Some(Token::Semi),
             Some('-') => {
                 if self.peek() == Some(&'>') {
                     self.next();
@@ -113,6 +116,7 @@ impl<'input> Iterator for Lexer<'input> {
                     "forall" => Some(Token::Forall),
                     "let" => Some(Token::Let),
                     "in" => Some(Token::In),
+                    "type" => Some(Token::Type),
                     _ => Some(Token::Ident(res)),
                 }
             }
