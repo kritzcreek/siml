@@ -7,6 +7,7 @@ extern crate siml;
 use fern::colors::{Color, ColoredLevelConfig};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use siml::repl;
+use siml::pretty;
 use std::fs;
 use std::sync::mpsc::channel;
 use std::thread;
@@ -57,9 +58,10 @@ fn run_file() {
 
 fn main() {
     setup_logger();
-    run_file();
-    thread::spawn(move || {
-        watch_file().expect("File watcher failed");
-    });
-    repl::run();
+    // run_file();
+    // thread::spawn(move || {
+    //     watch_file().expect("File watcher failed");
+    // });
+    // repl::run();
+    pretty::run();
 }

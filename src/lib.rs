@@ -10,4 +10,5 @@ pub mod repl;
 pub mod term;
 pub mod token;
 pub mod types;
+pub mod pretty;
 mod utils;

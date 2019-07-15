@@ -76,12 +76,21 @@ fn it_figures_out_test_equality() {
 
 #[test]
 fn it_prints_schemes() {
-    let scheme = Scheme {vars: vec!["a".to_string()], ty: ty("a -> a")};
+    let scheme = Scheme {
+        vars: vec!["a".to_string()],
+        ty: ty("a -> a"),
+    };
     assert_eq!(scheme.print(), "forall a. a -> a".to_string());
 
-    let scheme = Scheme {vars: vec!["a".to_string(), "b".to_string()], ty: ty("a -> b")};
+    let scheme = Scheme {
+        vars: vec!["a".to_string(), "b".to_string()],
+        ty: ty("a -> b"),
+    };
     assert_eq!(scheme.print(), "forall a b. a -> b".to_string());
 
-    let scheme = Scheme {vars: vec![], ty: ty("a -> a")};
+    let scheme = Scheme {
+        vars: vec![],
+        ty: ty("a -> a"),
+    };
     assert_eq!(scheme.print(), "a -> a".to_string());
 }

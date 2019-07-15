@@ -12,7 +12,7 @@ pub enum Declaration {
     Type {
         name: String,
         constructors: Vec<DataConstructor>,
-    }
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
