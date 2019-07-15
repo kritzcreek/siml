@@ -1,7 +1,7 @@
 use crate::bi_types;
+use crate::expr::{Declaration, Expr};
 use crate::grammar;
 use crate::term;
-use crate::expr::{Expr, Declaration};
 use crate::term::Term;
 use crate::token;
 use crate::types;
@@ -74,10 +74,9 @@ pub fn run_program(input: &str) {
             for decl in prog {
                 match decl {
                     Declaration::Value(expr) => run_expr(expr),
-                    Declaration::Type {
-                        name,
-                        constructors,
-                    } => info!("{}: {:#?}", name, constructors),
+                    Declaration::Type { name, constructors } => {
+                        info!("{}: {:#?}", name, constructors)
+                    }
                 }
             }
         }

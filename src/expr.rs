@@ -13,7 +13,9 @@ pub enum Declaration {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct DataConstructor { pub name: String }
+pub struct DataConstructor {
+    pub name: String,
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Literal {
