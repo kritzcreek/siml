@@ -10,6 +10,7 @@ pub enum Token {
     RParen,
     Colon,
     Semi,
+    Comma,
     Arrow,
     Forall,
     Let,
@@ -82,6 +83,7 @@ impl<'input> Iterator for Lexer<'input> {
             Some(')') => Some(Token::RParen),
             Some(':') => Some(Token::Colon),
             Some(';') => Some(Token::Semi),
+            Some(',') => Some(Token::Comma),
             Some('-') => {
                 if self.peek() == Some(&'>') {
                     self.next();

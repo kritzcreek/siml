@@ -23,3 +23,4 @@ let x = 4 in x;
    let identity = (\y. y : forall a. a -> a)
 in let const = \x. \y. x
 in const (identity 1) (identity true);
+type Well (Dude, What, Up);

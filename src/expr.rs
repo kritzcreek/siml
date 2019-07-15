@@ -5,10 +5,7 @@ use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Declaration {
-    Value {
-        ident: String,
-        expr: Expr,
-    },
+    Value(Expr),
     Type {
         name: String,
         constructors: Vec<DataConstructor>,
@@ -16,10 +13,7 @@ pub enum Declaration {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct DataConstructor {
-    pub name: String,
-    pub arguments: Vec<Type>,
-}
+pub struct DataConstructor { pub name: String }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Literal {

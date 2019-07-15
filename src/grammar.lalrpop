@@ -21,6 +21,7 @@ extern {
         "." => Token::Dot,
         "->" => Token::Arrow,
         ":" => Token::Colon,
+        "," => Token::Comma,
         ";" => Token::Semi,
     }
 }
@@ -30,13 +31,16 @@ pub Program: Vec<Declaration> = {
 }
 
 pub Declaration: Declaration = {
- "let" <ident: "identifier"> "=" <expr: Expr> =>
-   Declaration::Value { ident: ident.to_string(), expr },
- "type" <name: "identifier"> "(" <ty: BiType> ")" ";" =>
+ <expr: Expr> ";" => Declaration::Value(expr),
+ "type" <name: "identifier"> "(" <constructors: CommaSep<DataConstructor>> ")" ";" =>
    Declaration::Type
      { name: name.to_string(),
-       constructors: vec![DataConstructor { name: "Dummy".to_string(), arguments: vec![ty]}],
+       constructors
      }
+}
+
+DataConstructor: DataConstructor = {
+  <name: "identifier"> => DataConstructor { name: name.to_string() }
 }
 
 pub Expr: Expr = {
@@ -86,3 +90,15 @@ TypeAtom: bi_types::Type = {
       }
     }
 }
+
+// Also allows trailing commas
+CommaSep<T>: Vec<T> = {
+    <v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            let mut v = v;
+            v.push(e);
+            v
+        }
+    }
+};

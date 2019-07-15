@@ -1,6 +1,7 @@
 use crate::bi_types;
 use crate::grammar;
 use crate::term;
+use crate::expr::{Expr, Declaration};
 use crate::term::Term;
 use crate::token;
 use crate::types;
@@ -32,21 +33,23 @@ fn print_eval_res(ty_res: Result<term::Term, term::EvalError>) -> String {
     }
 }
 
+pub fn run_expr(expr: Expr) {
+    let mut type_checker = bi_types::TypeChecker::new();
+    let ty_res = type_checker.synth(&expr);
+    info!("BiInferred: {}", print_bi_ty_res(ty_res));
+    let mut type_checker = types::TypeChecker::new();
+    let ty_res = type_checker.infer_expr(&expr);
+    info!("Inferred: {}", print_ty_res(ty_res));
+    let eval_res = Term::eval_expr(&expr);
+    info!("Evaled: {}", print_eval_res(eval_res));
+}
+
 pub fn run_term(input: &str) {
     let lexer = token::Lexer::new(input);
     let res = grammar::ExprParser::new().parse(lexer);
     match res {
         Err(err) => error!("Parse failure: {:?}", err),
-        Ok(res) => {
-            let mut type_checker = bi_types::TypeChecker::new();
-            let ty_res = type_checker.synth(&res);
-            info!("BiInferred: {}", print_bi_ty_res(ty_res));
-            let mut type_checker = types::TypeChecker::new();
-            let ty_res = type_checker.infer_expr(&res);
-            info!("Inferred: {}", print_ty_res(ty_res));
-            let eval_res = Term::eval_expr(&res);
-            info!("Evaled: {}", print_eval_res(eval_res));
-        }
+        Ok(res) => run_expr(res),
     }
 }
 
@@ -58,6 +61,25 @@ fn run_type(input: &str) {
         Ok(res) => {
             info!("{}", res);
             info!("Free vars: {:#?}", res.free_vars());
+        }
+    }
+}
+
+pub fn run_program(input: &str) {
+    let lexer = token::Lexer::new(input);
+    let res = grammar::ProgramParser::new().parse(lexer);
+    match res {
+        Err(err) => error!("Parse failure: {:?}", err),
+        Ok(prog) => {
+            for decl in prog {
+                match decl {
+                    Declaration::Value(expr) => run_expr(expr),
+                    Declaration::Type {
+                        name,
+                        constructors,
+                    } => info!("{}: {:#?}", name, constructors),
+                }
+            }
         }
     }
 }
