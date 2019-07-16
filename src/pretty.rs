@@ -1,6 +1,6 @@
 use crate::bi_types::Type;
 use crate::expr::{Expr, Literal};
-use crate::grammar::{ExprParser, BiTypeParser};
+use crate::grammar::{BiTypeParser, ExprParser};
 use crate::token::Lexer;
 use pretty::{BoxDoc, Doc};
 
@@ -37,27 +37,32 @@ fn ty_doc(ty: &Type, depth: u32) -> Doc<BoxDoc<()>> {
         Type::App {
             type_constructor,
             arguments,
-        } => Doc::text("app"),
+        } => ty_doc(type_constructor, 0)
+            .append(Doc::space())
+            .append(Doc::intersperse(
+                arguments.into_iter().map(|a| ty_doc(a, 1)),
+                Doc::space(),
+            )),
         Type::Poly { vars, ty } => Doc::text("forall ")
             .append(Doc::intersperse(
                 vars.into_iter().map(|x| Doc::text(x)),
                 Doc::space(),
             ))
             .append(Doc::text("."))
+            .group()
             .append(Doc::space())
             .append(ty_doc(ty, 0))
-            .group(),
+            .nest(2),
         Type::Fun { arg, result } => {
             let inner = ty_doc(arg, 1)
                 .append(Doc::space())
                 .append(Doc::text("->"))
+                .group()
                 .append(Doc::space())
                 .append(ty_doc(result, 0))
                 .group();
             if depth > 0 {
-                Doc::text("(")
-                    .append(inner.nest(2).group())
-                    .append(Doc::text(")"))
+                Doc::text("(").append(inner).append(Doc::text(")"))
             } else {
                 inner
             }
@@ -129,7 +134,7 @@ pub fn to_pretty_ty(ty: &Type, width: usize) -> String {
 
 pub fn run() {
     let e = expr("let id = (\\x. x : a -> a) in id (\\func. func (g (well 12 true)))");
-    let t = ty("forall a b. a -> b");
+    let t = ty("forall a b. a -> (whatever -> dude)");
     println!("{}", to_pretty(&e, 50));
-    println!("{}", to_pretty_ty(&t, 50));
+    println!("{}", to_pretty_ty(&t, 15));
 }
