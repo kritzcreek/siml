@@ -1,5 +1,6 @@
 use crate::bi_types::Type;
-use crate::utils::parens_if;
+use crate::pretty::{render_doc, parens_if};
+use pretty::{BoxDoc, Doc};
 use std::collections::HashSet;
 use std::fmt;
 
@@ -30,6 +31,13 @@ impl Literal {
             Literal::Bool(b) => b.to_string(),
         }
     }
+
+    pub fn to_doc(&self) -> Doc<BoxDoc<()>> {
+        match self {
+            Literal::Int(i) => Doc::text(i.to_string()),
+            Literal::Bool(b) => Doc::text(b.to_string()),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -57,7 +65,7 @@ pub enum Expr {
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.print())
+        write!(f, "{}", render_doc(self.to_doc()))
     }
 }
 
@@ -133,6 +141,60 @@ impl Expr {
             Expr::App { func, arg } => func.free_vars().union(&arg.free_vars()).cloned().collect(),
             Expr::Literal(_) => HashSet::new(),
             Expr::Ann { expr, ty: _ } => expr.free_vars(),
+        }
+    }
+
+    pub fn to_doc(&self) -> Doc<BoxDoc<()>> {
+        self.to_doc_inner(0)
+    }
+
+    fn to_doc_inner(&self, depth: u32) -> Doc<BoxDoc<()>> {
+        match self {
+            Expr::App { func, arg } => {
+                let inner = func.to_doc()
+                    .append(Doc::space())
+                    .append(arg.to_doc_inner(depth + 1));
+                if depth > 0 {
+                    Doc::text("(")
+                        .append(inner.nest(2).group())
+                        .append(Doc::text(")"))
+                } else {
+                    inner
+                }
+            }
+            Expr::Let { binder, expr, body } => Doc::text("let")
+                .append(Doc::space())
+                .nest(2)
+                .append(
+                    Doc::text(binder)
+                        .append(Doc::space())
+                        .append(Doc::text("="))
+                        .append(Doc::space())
+                        .append(expr.to_doc())
+                        .group(),
+                )
+                .append(Doc::space())
+                .append(Doc::text("in"))
+                .append(Doc::space())
+                .append(body.to_doc_inner( 0))
+                .group(),
+            Expr::Literal(lit) => lit.to_doc(),
+            Expr::Lambda { binder, body } => Doc::text("(\\")
+                .append(Doc::text(binder))
+                .append(Doc::text("."))
+                .append(Doc::space())
+                .append(body.to_doc().nest(2))
+                .append(Doc::text(")"))
+                .group(),
+            Expr::Var(v) => Doc::text(v),
+            Expr::Ann { expr, ty } => Doc::text("(")
+                .append(expr.to_doc())
+                .append(Doc::space())
+                .append(Doc::text(":"))
+                .append(Doc::space())
+                .append(ty.to_doc())
+                .append(Doc::text(")"))
+                .group(),
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::bi_types;
 use crate::expr::{Expr, Literal};
-use crate::utils::*;
+use crate::pretty::parens_if;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::iter;
@@ -211,7 +211,7 @@ impl Substitution {
 }
 
 impl FromIterator<(String, Type)> for Substitution {
-    fn from_iter<I: IntoIterator<Item = (String, Type)>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item=(String, Type)>>(iter: I) -> Self {
         Substitution(iter.into_iter().collect())
     }
 }
@@ -355,16 +355,15 @@ impl TypeChecker {
                 );
                 let (ty_body, s) = self.infer(&tmp_env, body);
                 if ty_body.is_error() {
-                    TypeChecker::error_sentinel()
-                } else {
-                    (
-                        Type::Fun {
-                            arg: Box::new(s.apply(ty_binder)),
-                            result: Box::new(ty_body),
-                        },
-                        s,
-                    )
+                    return TypeChecker::error_sentinel();
                 }
+                (
+                    Type::Fun {
+                        arg: Box::new(s.apply(ty_binder)),
+                        result: Box::new(ty_body),
+                    },
+                    s,
+                )
             }
             Expr::Let { binder, expr, body } => {
                 let (ty_binder, s1) = self.infer(env, expr);
@@ -388,23 +387,22 @@ impl TypeChecker {
                 let (ty_fun, s1) = self.infer(env, func);
                 let (ty_arg, s2) = self.infer(&s1.apply_env(&env), arg);
                 if ty_fun.is_error() || ty_arg.is_error() {
-                    TypeChecker::error_sentinel()
-                } else {
-                    let unify_result = self.unify(
-                        s2.apply(ty_fun),
-                        Type::Fun {
-                            arg: Box::new(ty_arg),
-                            result: Box::new(ty_res.clone()),
-                        },
-                    );
-                    match unify_result {
-                        Some(s3) => {
-                            let ty_res = s3.apply(ty_res);
-                            let s = s3.compose(s2).compose(s1);
-                            (ty_res, s)
-                        }
-                        None => TypeChecker::error_sentinel(),
+                    return TypeChecker::error_sentinel();
+                }
+                let unify_result = self.unify(
+                    s2.apply(ty_fun),
+                    Type::Fun {
+                        arg: Box::new(ty_arg),
+                        result: Box::new(ty_res.clone()),
+                    },
+                );
+                match unify_result {
+                    Some(s3) => {
+                        let ty_res = s3.apply(ty_res);
+                        let s = s3.compose(s2).compose(s1);
+                        (ty_res, s)
                     }
+                    None => TypeChecker::error_sentinel(),
                 }
             }
             Expr::Ann { expr, ty } => {

@@ -1,8 +1,10 @@
 #![allow(dead_code)]
+
 use crate::expr::{Expr, Literal};
-use crate::utils::parens_if;
+use crate::pretty::{parens_if, render_doc};
 use std::collections::HashSet;
 use std::fmt;
+use pretty::{BoxDoc, Doc};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Type {
@@ -25,7 +27,7 @@ pub enum Type {
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.print())
+        write!(f, "{}", render_doc(self.to_doc()))
     }
 }
 
@@ -216,6 +218,55 @@ impl Type {
         Type::App {
             type_constructor: Box::new(con),
             arguments: args,
+        }
+    }
+}
+
+// Pretty printing
+impl Type {
+    pub fn to_doc(&self) -> Doc<BoxDoc<()>> {
+        self.to_doc_inner(0)
+    }
+    fn to_doc_inner(&self, depth: u32) -> Doc<BoxDoc<()>> {
+        match self {
+            Type::Constructor(c) => Doc::text(c),
+            Type::Existential(evar) => Doc::text(evar),
+            Type::Var(v) => Doc::text(v),
+            Type::App {
+                type_constructor,
+                arguments,
+            } => type_constructor.to_doc()
+                .append(Doc::space())
+                .append(Doc::intersperse(
+                    arguments.into_iter().map(|a| a.to_doc_inner(1)),
+                    Doc::space(),
+                )),
+            Type::Poly { vars, ty } => Doc::text("∀ ")
+                .append(Doc::intersperse(
+                    vars.into_iter().map(|x| Doc::text(x)),
+                    Doc::space(),
+                ))
+                .append(Doc::text("."))
+                .group()
+                .append(Doc::space())
+                .append(ty.to_doc())
+                .nest(2)
+                .group()
+            ,
+            Type::Fun { arg, result } => {
+                let inner = arg.to_doc_inner(1)
+                    .append(Doc::space())
+                    .append(Doc::text("->"))
+                    .group()
+                    .append(Doc::space())
+                    .append(result.to_doc())
+                    .group();
+                if depth > 0 {
+                    Doc::text("(").append(inner).append(Doc::text(")"))
+                } else {
+                    inner
+                }
+            }
         }
     }
 }
@@ -566,8 +617,8 @@ impl TypeChecker {
     /// Instantiates all bound type variables for a Polytype with fresh vars,
     /// and returns the renamed type as well as the freshly generated vars
     fn rename_poly<F>(&mut self, vars: &Vec<String>, ty: &Type, f: F) -> (Type, Vec<String>)
-    where
-        F: Fn(String) -> Type,
+        where
+            F: Fn(String) -> Type,
     {
         let fresh_vars: Vec<(String, String)> = vars
             .iter()
@@ -1029,6 +1080,7 @@ mod tests {
         let res = tc.subtype(ctx, &a, &b);
         assert_eq!(res, Ok(Context::new(vec![])));
     }
+
     fn subty_2() {
         let mut tc = TypeChecker::new();
         let ctx = Context::new(vec![]);

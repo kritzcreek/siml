@@ -47,22 +47,13 @@ fn run_file() {
     let source_file =
         fs::read_to_string("./examples.siml").expect("Failed to read the source file.");
     repl::run_program(&source_file)
-    // for line in source_file.split(";") {
-    //     if line.trim() == "" {
-    //         continue;
-    //     }
-    //     info!("{}", line.trim_start());
-    //     repl::run_term(line);
-    //     println!();
-    // }
 }
 
 fn main() {
     setup_logger();
-    // run_file();
-    // thread::spawn(move || {
-    //     watch_file().expect("File watcher failed");
-    // });
-    // repl::run();
-    pretty::run();
+    run_file();
+    thread::spawn(move || {
+        watch_file().expect("File watcher failed");
+    });
+    repl::run();
 }
