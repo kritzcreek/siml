@@ -6,7 +6,6 @@ extern crate siml;
 
 use fern::colors::{Color, ColoredLevelConfig};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use siml::pretty;
 use siml::repl;
 use std::fs;
 use std::sync::mpsc::channel;

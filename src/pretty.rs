@@ -9,8 +9,11 @@ pub fn parens_if(p: bool, s: String) -> String {
 }
 
 pub fn render_doc(doc: Doc<BoxDoc<()>>) -> String {
-    let mut w = Vec::new();
-    doc.render(80, &mut w).unwrap();
-    String::from_utf8(w).unwrap()
+    render_doc_width(doc, 80)
 }
 
+pub fn render_doc_width(doc: Doc<BoxDoc<()>>, width: usize) -> String {
+    let mut w = Vec::new();
+    doc.render(width, &mut w).unwrap();
+    String::from_utf8(w).unwrap()
+}

@@ -34,6 +34,7 @@ fn print_eval_res(ty_res: Result<term::Term, term::EvalError>) -> String {
 }
 
 pub fn run_expr(expr: Expr) {
+    info!("Expr:\n{}", expr);
     let mut type_checker = bi_types::TypeChecker::new();
     let ty_res = type_checker.synth(&expr);
     info!("BiInferred: {}", print_bi_ty_res(ty_res));

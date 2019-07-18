@@ -2,9 +2,9 @@
 
 use crate::expr::{Expr, Literal};
 use crate::pretty::{parens_if, render_doc};
+use pretty::{BoxDoc, Doc};
 use std::collections::HashSet;
 use std::fmt;
-use pretty::{BoxDoc, Doc};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Type {
@@ -235,26 +235,34 @@ impl Type {
             Type::App {
                 type_constructor,
                 arguments,
-            } => type_constructor.to_doc()
+            } => type_constructor
+                .to_doc()
                 .append(Doc::space())
                 .append(Doc::intersperse(
                     arguments.into_iter().map(|a| a.to_doc_inner(1)),
                     Doc::space(),
                 )),
-            Type::Poly { vars, ty } => Doc::text("∀ ")
-                .append(Doc::intersperse(
-                    vars.into_iter().map(|x| Doc::text(x)),
-                    Doc::space(),
-                ))
-                .append(Doc::text("."))
-                .group()
-                .append(Doc::space())
-                .append(ty.to_doc())
-                .nest(2)
-                .group()
-            ,
+            Type::Poly { vars, ty } => {
+                let inner = Doc::text("∀ ")
+                    .append(Doc::intersperse(
+                        vars.into_iter().map(|x| Doc::text(x)),
+                        Doc::space(),
+                    ))
+                    .append(Doc::text("."))
+                    .group()
+                    .append(Doc::space())
+                    .append(ty.to_doc())
+                    .nest(2)
+                    .group();
+                if depth > 0 {
+                    Doc::text("(").append(inner).append(Doc::text(")")).group()
+                } else {
+                    inner
+                }
+            }
             Type::Fun { arg, result } => {
-                let inner = arg.to_doc_inner(1)
+                let inner = arg
+                    .to_doc_inner(1)
                     .append(Doc::space())
                     .append(Doc::text("->"))
                     .group()
@@ -617,8 +625,8 @@ impl TypeChecker {
     /// Instantiates all bound type variables for a Polytype with fresh vars,
     /// and returns the renamed type as well as the freshly generated vars
     fn rename_poly<F>(&mut self, vars: &Vec<String>, ty: &Type, f: F) -> (Type, Vec<String>)
-        where
-            F: Fn(String) -> Type,
+    where
+        F: Fn(String) -> Type,
     {
         let fresh_vars: Vec<(String, String)> = vars
             .iter()

@@ -211,7 +211,7 @@ impl Substitution {
 }
 
 impl FromIterator<(String, Type)> for Substitution {
-    fn from_iter<I: IntoIterator<Item=(String, Type)>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = (String, Type)>>(iter: I) -> Self {
         Substitution(iter.into_iter().collect())
     }
 }
