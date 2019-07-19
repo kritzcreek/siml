@@ -1,0 +1,14 @@
+let id : forall a. a -> a =
+  \x. x;
+
+let const : forall a b. a -> b -> a =
+  \x. \y. x;
+
+let twice : forall a. (a -> a) -> a -> a =
+  \f. \x. f (f x);
+
+let main : Int =
+  let
+    addten = twice (add 5)
+  in
+    addten 1;

@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate log;
 extern crate fern;
 extern crate notify;
@@ -33,7 +32,7 @@ fn setup_logger() {
 fn watch_file() -> notify::Result<()> {
     let (tx, rx) = channel();
     let mut watcher: RecommendedWatcher = Watcher::new(tx, Duration::from_secs(2))?;
-    watcher.watch("examples.siml", RecursiveMode::Recursive)?;
+    watcher.watch("prog.siml", RecursiveMode::Recursive)?;
     loop {
         match rx.recv() {
             Ok(_) => run_file(),
@@ -44,7 +43,7 @@ fn watch_file() -> notify::Result<()> {
 
 fn run_file() {
     let source_file =
-        fs::read_to_string("./examples.siml").expect("Failed to read the source file.");
+        fs::read_to_string("./prog.siml").expect("Failed to read the source file.");
     repl::run_program(&source_file)
 }
 
@@ -54,5 +53,8 @@ fn main() {
     thread::spawn(move || {
         watch_file().expect("File watcher failed");
     });
+    loop {
+        thread::sleep(Duration::from_secs(2))
+    }
     repl::run();
 }

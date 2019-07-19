@@ -31,7 +31,8 @@ pub Program: Vec<Declaration> = {
 }
 
 pub Declaration: Declaration = {
- <expr: Expr> ";" => Declaration::Value(expr),
+ "let" <name: "identifier"> ":" <ty: BiType> "=" <expr: Expr> ";" =>
+   Declaration::Value{ expr: Expr::Ann { expr: Box::new(expr), ty }, name: name.to_string() },
  "type" <name: "identifier"> "(" <constructors: CommaSep<DataConstructor>> ")" ";" =>
    Declaration::Type
      { name: name.to_string(),

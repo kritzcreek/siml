@@ -1,5 +1,5 @@
 use crate::bi_types;
-use crate::expr::{Declaration, Expr};
+use crate::expr::Expr;
 use crate::grammar;
 use crate::term;
 use crate::term::Term;
@@ -72,14 +72,17 @@ pub fn run_program(input: &str) {
     match res {
         Err(err) => error!("Parse failure: {:?}", err),
         Ok(prog) => {
-            for decl in prog {
-                match decl {
-                    Declaration::Value(expr) => run_expr(expr),
-                    Declaration::Type { name, constructors } => {
-                        info!("{}: {:#?}", name, constructors)
-                    }
-                }
-            }
+            let mut type_checker = bi_types::TypeChecker::new();
+            let res = match type_checker.synth_prog(&prog) {
+                Err(err) => err.print(),
+                Ok(tys) => format!(
+                    "{:#?}",
+                    tys.into_iter()
+                        .map(|(name, ty)| format!("{} : {}", name, ty.print()))
+                        .collect::<Vec<_>>()
+                ),
+            };
+            info!("[Prog] {}", res)
         }
     }
 }

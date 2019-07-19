@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::expr::{Expr, Literal};
+use crate::expr::{Declaration, Expr, Literal};
 use crate::pretty::{parens_if, render_doc};
 use pretty::{BoxDoc, Doc};
 use std::collections::HashSet;
@@ -264,7 +264,7 @@ impl Type {
                 let inner = arg
                     .to_doc_inner(1)
                     .append(Doc::space())
-                    .append(Doc::text("->"))
+                    .append(Doc::text("→"))
                     .group()
                     .append(Doc::space())
                     .append(result.to_doc())
@@ -1041,6 +1041,34 @@ impl TypeChecker {
             debug!("synth_ctx: {:?}", x.0);
             x.0.apply(&x.1)
         })
+    }
+    pub fn synth_prog(
+        &mut self,
+        prog: &Vec<Declaration>,
+    ) -> Result<Vec<(String, Type)>, TypeError> {
+        let mut ctx = Context::new(vec![
+            ContextElem::Anno(
+                "add".to_string(),
+                Type::fun(Type::int(), Type::fun(Type::int(), Type::int())),
+            ),
+        ]);
+
+        for decl in prog.into_iter() {
+            if let Declaration::Value { name, expr } = decl {
+                let (mut new_ctx, ty) = self.infer(ctx, expr)?;
+                new_ctx.push(ContextElem::Anno(name.to_string(), new_ctx.apply(&ty)));
+                ctx = new_ctx;
+            }
+        }
+
+        let mut result = vec![];
+        for decl in prog.into_iter() {
+            if let Declaration::Value { name, expr: _ } = decl {
+                let ty = ctx.find_var(name).expect(&format!("Missing type for {}", name));
+                result.push((name.clone(), ty.clone()));
+            }
+        }
+        Ok(result)
     }
 }
 
