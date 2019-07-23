@@ -117,6 +117,23 @@ impl Type {
         res
     }
 
+    fn unfold_fun_inner(&self) -> Vec<&Self> {
+        match self {
+            Type::Fun { arg, result } => {
+                let mut res = result.unfold_fun_inner();
+                res.push(arg);
+                res
+            }
+            _ => vec![self],
+        }
+    }
+
+    pub fn unfold_fun(&self) -> Vec<&Self> {
+        let mut res = self.unfold_fun_inner();
+        res.reverse();
+        res
+    }
+
     pub fn subst(&self, var: &String, replacement: &Type) -> Type {
         match self {
             Type::Constructor(_) => self.clone(),
@@ -1045,7 +1062,7 @@ impl TypeChecker {
     pub fn synth_prog(
         &mut self,
         prog: &Vec<Declaration>,
-    ) -> Result<Vec<(String, Type)>, TypeError> {
+    ) -> Result<Vec<(Declaration, Type)>, TypeError> {
         let mut ctx = Context::new(vec![
             ContextElem::Anno(
                 "add".to_string(),
@@ -1065,7 +1082,7 @@ impl TypeChecker {
         for decl in prog.into_iter() {
             if let Declaration::Value { name, expr: _ } = decl {
                 let ty = ctx.find_var(name).expect(&format!("Missing type for {}", name));
-                result.push((name.clone(), ty.clone()));
+                result.push((decl.clone(), ty.clone()));
             }
         }
         Ok(result)

@@ -10,10 +10,10 @@ pub enum Declaration {
         name: String,
         expr: Expr,
     },
-    Type {
-        name: String,
-        constructors: Vec<DataConstructor>,
-    },
+    // Type {
+    //     name: String,
+    //     constructors: Vec<DataConstructor>,
+    // },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

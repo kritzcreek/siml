@@ -11,3 +11,6 @@ pub mod repl;
 pub mod term;
 pub mod token;
 pub mod types;
+pub mod codegen;
+mod wasm;
+// pub mod ir; // implement closure conversion here
