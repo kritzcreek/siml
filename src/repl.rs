@@ -77,12 +77,13 @@ pub fn run_program(input: &str) {
             match type_checker.synth_prog(&prog) {
                 Err(err) => error!("{}", err.print()),
                 Ok(tys) => {
-                    info!(
-                        "{:#?}",
-                        tys.iter()
-                            .map(|(name, ty)| format!("{:?} : {}", name, ty.print()))
-                            .collect::<Vec<_>>()
-                    );
+                    //                    info!(
+                    //                        "{:#?}",
+                    //                        tys.iter()
+                    //                            .map(|(name, ty)| format!("{:?} : {}", name, ty.print()))
+                    //                            .collect::<Vec<_>>()
+                    //                    );
+                    info!("Executing WASM:");
                     wasm::test_wasm(tys)
                 }
             };

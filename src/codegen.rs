@@ -1,16 +1,20 @@
-use std::collections::{HashMap};
-use crate::expr::{Expr, Declaration};
 use crate::bi_types::Type;
+use crate::expr::{Declaration, Expr, Literal};
+use std::collections::HashMap;
 
 pub struct Codegen {
     supply: u32,
-    global_names: HashMap<String, u32>,
+    global_names: HashMap<String, (u32, Type)>,
     out: String,
 }
 
 impl Codegen {
     pub fn new() -> Codegen {
-        Codegen { supply: 0, global_names: HashMap::new(), out: String::new() }
+        Codegen {
+            supply: 0,
+            global_names: HashMap::new(),
+            out: String::new(),
+        }
     }
 
     fn fresh_name(&mut self, s: String) -> String {
@@ -22,13 +26,13 @@ impl Codegen {
         let mut index_supply: u32 = 0;
         let mut global_names = HashMap::new();
         for decl in prog {
-            if let (Declaration::Value { name, expr: _ }, _) = decl {
-                global_names.insert(name.to_string(), index_supply);
+            if let (Declaration::Value { name, expr: _ }, ty) = decl {
+                global_names.insert(name.to_string(), (index_supply, ty.clone()));
                 index_supply += 1;
             }
         }
+        self.global_names = global_names;
     }
-
 
     pub fn codegen(mut self, prog: &Vec<(Declaration, Type)>) -> String {
         self.populate_global_names(prog);
@@ -52,28 +56,75 @@ impl Codegen {
 
     fn function_table(&mut self) {
         self.out += &format!("(table {} anyfunc)", self.global_names.len());
-        for (name, n) in self.global_names.iter() {
+        for (name, (n, _)) in self.global_names.iter() {
             self.out += &format!("(elem (i32.const {}) ${})", n, name)
         }
     }
 
-    fn fun_body(&mut self, expr: &Expr) {
+    fn gen_expr(&mut self, expr: Expr) {
+        match expr {
+            Expr::Ann { ty, expr } => self.gen_expr(*expr),
+            Expr::Var(v) => {
+                if &v == "primadd" {
+                    self.out += "(i32.add (local.get $x) (local.get $y))"
+                } else if self.global_names.contains_key(&v) {
+                    self.out += &format!("(call ${}_c)", v)
+                } else {
+                    self.out += &format!("(local.get ${})", v)
+                }
+            }
+            Expr::Literal(Literal::Int(i)) => self.out += &format!("(i32.const {})", i),
+            Expr::App { func, arg } => {
+                self.gen_expr(*func);
+                self.out += &format!("(call $apply ");
+                self.gen_expr(*arg);
+                self.out += &format!(")");
+            }
+            _ => panic!("Unknown Expr codegen {:?}", expr),
+        }
     }
 
     fn fun(&mut self, name: &str, expr: &Expr, ty: &Type) {
+        let (binders, body) = expr.collapse_lambdas();
         let mut args = ty.unfold_fun();
         let res = args.pop();
-        self.out += &format!("\n(func ${} ", name);
-        for arg in args {
-            ()
-        };
-        self.out += ")";
+        self.out += &format!("\n(func ${}", name);
+        let binder_count = binders.len();
+        if binder_count != 0 {
+            self.out += &format!(" (param $args i32)")
+        }
+        self.out += &format!(" (result i32)\n");
+
+        for binder in binders.iter() {
+            self.out += &format!("(local ${} i32)\n", binder)
+        }
+        for (ix, binder) in binders.iter().enumerate() {
+            self.out += &format!(
+                "(set_local ${} (i32.load16_u (i32.add (get_local $args) (i32.const {}))))\n",
+                binder,
+                ix * 2
+            )
+        }
+
+        self.gen_expr(body);
+        self.out += ")\n";
+
+        if binder_count == 0 {
+            self.out += &format!("(func ${}_c (result i32) (call ${}))", name, name)
+        } else {
+            // generate the wrapper
+            self.out += &format!(
+                "(func ${}_c (result i32) (call $make_closure (i32.const {}) (i32.const {})))",
+                name,
+                binder_count,
+                self.global_names.get(name).unwrap().0
+            )
+        }
     }
 
     fn entry_point(&mut self) {
-        self.out += "\n(func $test (result i32) (call $main)) (export \"test\" (func $test))"
+        self.out += "\n(export \"main\" (func $main))"
     }
-
 }
 
 const ALLOCATOR_RTS: &str = r#"

@@ -1,1 +1,8 @@
-let main : Int = 1;
+let add : Int -> Int -> Int =
+  \x. \y. primadd;
+
+let twice : forall a. (a -> a) -> a -> a =
+  \f. \x. f (f x);
+
+let main : Int =
+  twice (twice (add 10)) 5;

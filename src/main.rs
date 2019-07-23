@@ -1,5 +1,5 @@
-extern crate log;
 extern crate fern;
+extern crate log;
 extern crate notify;
 extern crate siml;
 
@@ -42,8 +42,7 @@ fn watch_file() -> notify::Result<()> {
 }
 
 fn run_file() {
-    let source_file =
-        fs::read_to_string("./prog.siml").expect("Failed to read the source file.");
+    let source_file = fs::read_to_string("prog.siml").expect("Failed to read the source file.");
     repl::run_program(&source_file)
 }
 

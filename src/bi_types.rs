@@ -1048,10 +1048,7 @@ impl TypeChecker {
 
     pub fn synth(&mut self, expr: &Expr) -> Result<Type, TypeError> {
         let initial_ctx = Context::new(vec![
-            ContextElem::Anno(
-                "add".to_string(),
-                Type::fun(Type::int(), Type::fun(Type::int(), Type::int())),
-            ),
+            ContextElem::Anno("primadd".to_string(), Type::int()),
             ContextElem::Anno("pi".to_string(), Type::int()),
         ]);
         self.infer(initial_ctx, expr).map(|x| {
@@ -1063,12 +1060,7 @@ impl TypeChecker {
         &mut self,
         prog: &Vec<Declaration>,
     ) -> Result<Vec<(Declaration, Type)>, TypeError> {
-        let mut ctx = Context::new(vec![
-            ContextElem::Anno(
-                "add".to_string(),
-                Type::fun(Type::int(), Type::fun(Type::int(), Type::int())),
-            ),
-        ]);
+        let mut ctx = Context::new(vec![ContextElem::Anno("primadd".to_string(), Type::int())]);
 
         for decl in prog.into_iter() {
             if let Declaration::Value { name, expr } = decl {
@@ -1081,7 +1073,9 @@ impl TypeChecker {
         let mut result = vec![];
         for decl in prog.into_iter() {
             if let Declaration::Value { name, expr: _ } = decl {
-                let ty = ctx.find_var(name).expect(&format!("Missing type for {}", name));
+                let ty = ctx
+                    .find_var(name)
+                    .expect(&format!("Missing type for {}", name));
                 result.push((decl.clone(), ty.clone()));
             }
         }

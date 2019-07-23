@@ -6,10 +6,7 @@ use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Declaration {
-    Value {
-        name: String,
-        expr: Expr,
-    },
+    Value { name: String, expr: Expr },
     // Type {
     //     name: String,
     //     constructors: Vec<DataConstructor>,
@@ -156,6 +153,24 @@ impl Expr {
             }
             _ => vec![self],
         }
+    }
+
+    pub fn collapse_lambdas(&self) -> (Vec<String>, Expr) {
+        let mut bod = self;
+        let mut args = vec![];
+        loop {
+            match bod {
+                Expr::Lambda { binder, body } => {
+                    args.push(binder.clone());
+                    bod = body;
+                }
+                Expr::Ann { ty: _, expr } => {
+                    bod = expr;
+                }
+                _ => break,
+            }
+        }
+        (args, bod.clone())
     }
 
     pub fn to_doc(&self) -> Doc<BoxDoc<()>> {

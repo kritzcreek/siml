@@ -1,10 +1,9 @@
 extern crate wabt;
 extern crate wasmi;
-use std::fs;
-use wasmi::{ImportsBuilder, ModuleInstance, NopExternals};
+use crate::bi_types::Type;
 use crate::codegen::*;
 use crate::expr::Declaration;
-use crate::bi_types::Type;
+use wasmi::{ImportsBuilder, ModuleInstance, NopExternals};
 
 pub fn test_wasm(prog: Vec<(Declaration, Type)>) {
     // let contents =
@@ -12,7 +11,7 @@ pub fn test_wasm(prog: Vec<(Declaration, Type)>) {
 
     let contents = Codegen::new().codegen(&prog);
 
-    info!("[wasm] {}", contents);
+    // info!("[wasm] {}", contents);
 
     // Parse WAT (WebAssembly Text format) into wasm bytecode.
     let wasm_binary: Vec<u8> = match wabt::wat2wasm(contents) {
@@ -22,7 +21,6 @@ pub fn test_wasm(prog: Vec<(Declaration, Type)>) {
         }
         Ok(wasm) => wasm,
     };
-    let wat_again = wabt::wasm2wat(&wasm_binary).unwrap();
 
     // Load wasm binary and prepare it for instantiation.
     let module = wasmi::Module::from_buffer(&wasm_binary).expect("failed to load wasm");
@@ -36,7 +34,7 @@ pub fn test_wasm(prog: Vec<(Declaration, Type)>) {
     println!(
         "{:?}",
         instance
-            .invoke_export("test", &[], &mut NopExternals,)
+            .invoke_export("main", &[], &mut NopExternals,)
             .expect("failed to execute export")
     );
 }
