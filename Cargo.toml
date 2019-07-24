@@ -13,6 +13,8 @@ fern = { version = "0.5.8", features = ["colored"] }
 rustyline = "5.0.0"
 notify = "4.0.12"
 pretty = "0.5"
+wasmi = "0.5"
+wabt = "0.8"
 
 [build-dependencies]
 lalrpop = "0.17.1"

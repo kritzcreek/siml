@@ -117,6 +117,23 @@ impl Type {
         res
     }
 
+    fn unfold_fun_inner(&self) -> Vec<&Self> {
+        match self {
+            Type::Fun { arg, result } => {
+                let mut res = result.unfold_fun_inner();
+                res.push(arg);
+                res
+            }
+            _ => vec![self],
+        }
+    }
+
+    pub fn unfold_fun(&self) -> Vec<&Self> {
+        let mut res = self.unfold_fun_inner();
+        res.reverse();
+        res
+    }
+
     pub fn subst(&self, var: &String, replacement: &Type) -> Type {
         match self {
             Type::Constructor(_) => self.clone(),
@@ -1031,10 +1048,7 @@ impl TypeChecker {
 
     pub fn synth(&mut self, expr: &Expr) -> Result<Type, TypeError> {
         let initial_ctx = Context::new(vec![
-            ContextElem::Anno(
-                "add".to_string(),
-                Type::fun(Type::int(), Type::fun(Type::int(), Type::int())),
-            ),
+            ContextElem::Anno("primadd".to_string(), Type::int()),
             ContextElem::Anno("pi".to_string(), Type::int()),
         ]);
         self.infer(initial_ctx, expr).map(|x| {
@@ -1045,13 +1059,8 @@ impl TypeChecker {
     pub fn synth_prog(
         &mut self,
         prog: &Vec<Declaration>,
-    ) -> Result<Vec<(String, Type)>, TypeError> {
-        let mut ctx = Context::new(vec![
-            ContextElem::Anno(
-                "add".to_string(),
-                Type::fun(Type::int(), Type::fun(Type::int(), Type::int())),
-            ),
-        ]);
+    ) -> Result<Vec<(Declaration, Type)>, TypeError> {
+        let mut ctx = Context::new(vec![ContextElem::Anno("primadd".to_string(), Type::int())]);
 
         for decl in prog.into_iter() {
             if let Declaration::Value { name, expr } = decl {
@@ -1064,8 +1073,10 @@ impl TypeChecker {
         let mut result = vec![];
         for decl in prog.into_iter() {
             if let Declaration::Value { name, expr: _ } = decl {
-                let ty = ctx.find_var(name).expect(&format!("Missing type for {}", name));
-                result.push((name.clone(), ty.clone()));
+                let ty = ctx
+                    .find_var(name)
+                    .expect(&format!("Missing type for {}", name));
+                result.push((decl.clone(), ty.clone()));
             }
         }
         Ok(result)

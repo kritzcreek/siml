@@ -5,6 +5,7 @@ use crate::term;
 use crate::term::Term;
 use crate::token;
 use crate::types;
+use crate::wasm;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
@@ -73,16 +74,19 @@ pub fn run_program(input: &str) {
         Err(err) => error!("Parse failure: {:?}", err),
         Ok(prog) => {
             let mut type_checker = bi_types::TypeChecker::new();
-            let res = match type_checker.synth_prog(&prog) {
-                Err(err) => err.print(),
-                Ok(tys) => format!(
-                    "{:#?}",
-                    tys.into_iter()
-                        .map(|(name, ty)| format!("{} : {}", name, ty.print()))
-                        .collect::<Vec<_>>()
-                ),
+            match type_checker.synth_prog(&prog) {
+                Err(err) => error!("{}", err.print()),
+                Ok(tys) => {
+                    //                    info!(
+                    //                        "{:#?}",
+                    //                        tys.iter()
+                    //                            .map(|(name, ty)| format!("{:?} : {}", name, ty.print()))
+                    //                            .collect::<Vec<_>>()
+                    //                    );
+                    info!("Executing WASM:");
+                    wasm::test_wasm(tys)
+                }
             };
-            info!("[Prog] {}", res)
         }
     }
 }
