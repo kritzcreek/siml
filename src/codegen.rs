@@ -101,7 +101,7 @@ impl Codegen {
         }
     }
 
-    fn gen_expr(&mut self, expr: Expr) {
+    fn gen_expr(&mut self, expr: Expr<String>) {
         match expr {
             Expr::Ann { ty, expr } => self.gen_expr(*expr),
             Expr::Var(v) => {
@@ -130,7 +130,7 @@ impl Codegen {
         }
     }
 
-    fn fun(&mut self, name: &str, expr: &Expr, ty: &Type) {
+    fn fun(&mut self, name: &str, expr: &Expr<String>, ty: &Type) {
         let (binders, body) = expr.collapse_lambdas();
         let (body, let_binders) = self.let_lift(body);
         let mut args = ty.unfold_fun();
@@ -157,7 +157,7 @@ impl Codegen {
             )
         }
 
-        self.gen_expr(body);
+        self.gen_expr(body.clone());
         self.out += ")\n";
 
         if binder_count == 0 {

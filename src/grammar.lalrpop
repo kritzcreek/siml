@@ -1,5 +1,5 @@
 use crate::token::Token;
-use crate::expr::{Expr, Literal, Declaration, DataConstructor};
+use crate::expr::{Expr, ParserExpr, Literal, Declaration, DataConstructor};
 use crate::types::{Type};
 use crate::bi_types;
 
@@ -44,7 +44,7 @@ DataConstructor: DataConstructor = {
   <name: "identifier"> => DataConstructor { name: name.to_string() }
 }
 
-pub Expr: Expr = {
+pub Expr: ParserExpr = {
     ExprAtom,
     "\\" <binder: "identifier"> "." <body: Expr> =>
         Expr::Lambda { binder: binder.to_string(), body: Box::new(body) },
@@ -57,7 +57,7 @@ pub Expr: Expr = {
     },
 }
 
-ExprAtom: Expr = {
+ExprAtom: ParserExpr = {
     "identifier" => Expr::Var(<>.to_string()),
     "int_literal" => Expr::Literal(Literal::Int(<>)),
     "bool_literal" => Expr::Literal(Literal::Bool(<>)),

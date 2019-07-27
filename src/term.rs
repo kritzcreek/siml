@@ -1,4 +1,4 @@
-use crate::expr::{Expr, Literal};
+use crate::expr::{Expr, Literal, RenderIdent};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -60,30 +60,34 @@ fn initial_env() -> Env {
 }
 
 impl Term {
-    fn from_expr(expr: &Expr) -> Term {
+    fn from_expr<B>(expr: &Expr<B>) -> Term
+        where B: RenderIdent
+    {
         match expr {
             Expr::App { func, arg } => Term::App {
                 func: Box::new(Term::from_expr(func)),
                 arg: Box::new(Term::from_expr(arg)),
             },
             Expr::Lambda { binder, body } => Term::Lambda {
-                binder: binder.clone(),
+                binder: binder.ident(),
                 body: Box::new(Term::from_expr(body)),
             },
             Expr::Let { binder, expr, body } => Term::App {
                 func: Box::new(Term::Lambda {
-                    binder: binder.clone(),
+                    binder: binder.ident(),
                     body: Box::new(Term::from_expr(body)),
                 }),
                 arg: Box::new(Term::from_expr(expr)),
             },
-            Expr::Var(s) => Term::Var(s.clone()),
+            Expr::Var(s) => Term::Var(s.ident()),
             Expr::Literal(lit) => Term::Literal(lit.clone()),
             Expr::Ann { expr, ty: _ } => Term::from_expr(expr),
         }
     }
 
-    pub fn eval_expr(expr: &Expr) -> Result<Term, EvalError> {
+    pub fn eval_expr<B>(expr: &Expr<B>) -> Result<Term, EvalError>
+        where B: RenderIdent
+    {
         Term::eval(&initial_env(), Term::from_expr(expr))
     }
 

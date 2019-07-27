@@ -311,7 +311,7 @@ impl TypeChecker {
         }
     }
 
-    pub fn infer_expr(&mut self, expr: &Expr) -> Result<Type, Vec<TypeError>> {
+    pub fn infer_expr(&mut self, expr: &Expr<String>) -> Result<Type, Vec<TypeError>> {
         let mut init_env = HashMap::new();
         init_env.insert(
             "add".to_string(),
@@ -334,7 +334,7 @@ impl TypeChecker {
         }
     }
 
-    pub fn infer(&mut self, env: &Environment, expr: &Expr) -> (Type, Substitution) {
+    pub fn infer(&mut self, env: &Environment, expr: &Expr<String>) -> (Type, Substitution) {
         match expr {
             Expr::Var(x) => match env.get(x) {
                 None => {

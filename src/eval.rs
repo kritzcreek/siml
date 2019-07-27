@@ -1,6 +1,8 @@
 use crate::expr::Expr;
 use std::collections::HashSet;
 
+type EvalExpr = Expr<String>;
+
 pub struct Eval {
     supply: u32,
 }
@@ -10,7 +12,7 @@ impl Eval {
         Eval { supply: 0 }
     }
 
-    pub fn eval(&mut self, expr: Expr) -> Expr {
+    pub fn eval(&mut self, expr: EvalExpr) -> EvalExpr {
         match expr {
             Expr::App { func, arg } => {
                 debug!(
@@ -59,7 +61,7 @@ impl Eval {
         format!("{}{}", self.supply, var)
     }
 
-    fn substitute(&mut self, expr: &Expr, scrutinee: &String, replacement: &Expr) -> Expr {
+    fn substitute(&mut self, expr: &EvalExpr, scrutinee: &String, replacement: &EvalExpr) -> EvalExpr {
         match expr {
             Expr::Var(x) => {
                 if scrutinee == x {
@@ -85,8 +87,8 @@ impl Eval {
                 if binder == scrutinee {
                     return expr.clone();
                 }
-                let free_vars: HashSet<&String> = replacement.free_vars();
-                if free_vars.contains(&binder) {
+                let free_vars = replacement.free_vars();
+                if free_vars.contains(binder) {
                     let new_binder = self.fresh_var(&binder);
                     let renamed_body =
                         self.substitute(body, &binder, &Expr::Var(new_binder.clone()));

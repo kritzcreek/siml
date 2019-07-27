@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::expr::{Declaration, Expr, Literal};
+use crate::expr::{Declaration, Expr, ParserExpr, Literal};
 use crate::pretty::{parens_if, render_doc};
 use pretty::{BoxDoc, Doc};
 use std::collections::HashSet;
@@ -888,7 +888,7 @@ impl TypeChecker {
         }
     }
 
-    fn check(&mut self, ctx: Context, expr: &Expr, ty: &Type) -> Result<Context, TypeError> {
+    fn check(&mut self, ctx: Context, expr: &ParserExpr, ty: &Type) -> Result<Context, TypeError> {
         match (expr, ty) {
             (Expr::Literal(Literal::Int(_)), ty) if ty == &Type::int() => Ok(ctx),
             (Expr::Literal(Literal::Bool(_)), ty) if ty == &Type::boolean() => Ok(ctx),
@@ -908,13 +908,13 @@ impl TypeChecker {
                 let anno_elem = ContextElem::Anno(binder_fresh.clone(), ty_binder);
                 new_ctx.push(anno_elem);
                 let res_ctx =
-                    self.check(new_ctx, &body.subst(binder, &Expr::Var(binder_fresh)), ty)?;
+                    self.check(new_ctx, &body.subst((|b| binder == b), &Expr::Var(binder_fresh)), ty)?;
                 Ok(res_ctx)
             }
             (_, Type::Poly { vars, ty }) => {
                 //forall_l
                 let mut tmp_ctx = ctx;
-                let (renamed_ty, fresh_vars) = self.rename_poly(vars, ty, |v| Type::Var(v.clone()));
+                let (renamed_ty, fresh_vars) = self.rename_poly(&vars, &ty, |v| Type::Var(v.clone()));
                 let marker = ContextElem::Universal(fresh_vars[0].clone());
                 tmp_ctx.push_elems(
                     fresh_vars
@@ -936,7 +936,7 @@ impl TypeChecker {
         }
     }
 
-    fn infer(&mut self, ctx: Context, expr: &Expr) -> Result<(Context, Type), TypeError> {
+    fn infer(&mut self, ctx: Context, expr: &ParserExpr) -> Result<(Context, Type), TypeError> {
         match expr {
             Expr::Literal(Literal::Int(_)) => Ok((ctx, Type::int())),
             Expr::Literal(Literal::Bool(_)) => Ok((ctx, Type::boolean())),
@@ -962,7 +962,7 @@ impl TypeChecker {
                 let binder_fresh = self.name_gen.fresh_var();
                 let mut tmp_ctx = ctx;
                 tmp_ctx.push(ContextElem::Anno(binder_fresh.clone(), ty_binder));
-                self.infer(tmp_ctx, &body.subst(binder, &Expr::Var(binder_fresh)))
+                self.infer(tmp_ctx, &body.subst((|b| binder == b), &Expr::Var(binder_fresh)))
             }
             Expr::Lambda { binder, body } => {
                 // ->l=>
@@ -979,7 +979,7 @@ impl TypeChecker {
 
                 let mut res_ctx = self.check(
                     tmp_ctx,
-                    &body.subst(binder, &Expr::Var(binder_fresh)),
+                    &body.subst((|b| b == binder), &Expr::Var(binder_fresh)),
                     &Type::Existential(b.clone()),
                 )?;
                 res_ctx.drop_marker(marker);
@@ -997,7 +997,7 @@ impl TypeChecker {
         &mut self,
         ctx: Context,
         ty: &Type,
-        expr: &Expr,
+        expr: &ParserExpr,
     ) -> Result<(Context, Type), TypeError> {
         match ty {
             Type::Poly { vars, ty: ty1 } => {
@@ -1046,7 +1046,7 @@ impl TypeChecker {
         }
     }
 
-    pub fn synth(&mut self, expr: &Expr) -> Result<Type, TypeError> {
+    pub fn synth(&mut self, expr: &ParserExpr) -> Result<Type, TypeError> {
         let initial_ctx = Context::new(vec![
             ContextElem::Anno("primadd".to_string(), Type::int()),
             ContextElem::Anno("pi".to_string(), Type::int()),

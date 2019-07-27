@@ -1,5 +1,5 @@
 use crate::bi_types;
-use crate::expr::Expr;
+use crate::expr::{ParserExpr};
 use crate::grammar;
 use crate::term;
 use crate::term::Term;
@@ -34,7 +34,7 @@ fn print_eval_res(ty_res: Result<term::Term, term::EvalError>) -> String {
     }
 }
 
-pub fn run_expr(expr: Expr) {
+pub fn run_expr(expr: ParserExpr) {
     info!("Expr:\n{}", expr);
     let mut type_checker = bi_types::TypeChecker::new();
     let ty_res = type_checker.synth(&expr);
