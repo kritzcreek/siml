@@ -908,7 +908,7 @@ impl TypeChecker {
                 let anno_elem = ContextElem::Anno(binder_fresh.clone(), ty_binder);
                 new_ctx.push(anno_elem);
                 let res_ctx =
-                    self.check(new_ctx, &body.subst((|b| binder == b), &Expr::Var(binder_fresh)), ty)?;
+                    self.check(new_ctx, &body.subst(binder, &Expr::Var(binder_fresh)), ty)?;
                 Ok(res_ctx)
             }
             (_, Type::Poly { vars, ty }) => {
@@ -962,7 +962,7 @@ impl TypeChecker {
                 let binder_fresh = self.name_gen.fresh_var();
                 let mut tmp_ctx = ctx;
                 tmp_ctx.push(ContextElem::Anno(binder_fresh.clone(), ty_binder));
-                self.infer(tmp_ctx, &body.subst((|b| binder == b), &Expr::Var(binder_fresh)))
+                self.infer(tmp_ctx, &body.subst(binder, &Expr::Var(binder_fresh)))
             }
             Expr::Lambda { binder, body } => {
                 // ->l=>
@@ -979,7 +979,7 @@ impl TypeChecker {
 
                 let mut res_ctx = self.check(
                     tmp_ctx,
-                    &body.subst((|b| b == binder), &Expr::Var(binder_fresh)),
+                    &body.subst(binder, &Expr::Var(binder_fresh)),
                     &Type::Existential(b.clone()),
                 )?;
                 res_ctx.drop_marker(marker);

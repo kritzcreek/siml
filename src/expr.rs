@@ -40,11 +40,14 @@ impl Literal {
     }
 }
 
-pub trait RenderIdent {
+pub trait HasIdent {
     fn ident(&self) -> String;
+    fn ident_with_ty(&self) -> String {
+        self.ident()
+    }
 }
 
-impl RenderIdent for String {
+impl HasIdent for String {
     fn ident(&self) -> String {
         self.clone()
     }
@@ -56,9 +59,13 @@ pub struct Var {
     ty: Type,
 }
 
-impl RenderIdent for Var {
+impl HasIdent for Var {
     fn ident(&self) -> String {
         self.name.clone()
+    }
+
+    fn ident_with_ty(&self) -> String {
+        format!("{} : {}", self.name, self.ty)
     }
 }
 
@@ -91,7 +98,7 @@ pub enum Expr<B> {
 pub type ParserExpr = Expr<String>;
 pub type TypedExpr = Expr<Var>;
 
-impl<B: RenderIdent> fmt::Display for Expr<B> {
+impl<B: HasIdent> fmt::Display for Expr<B> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", render_doc_width(self.to_doc(), 60))
     }
@@ -127,14 +134,14 @@ impl<B> Expr<B> {
 
     pub fn to_doc(&self) -> Doc<BoxDoc<()>>
     where
-        B: RenderIdent,
+        B: HasIdent,
     {
         self.to_doc_inner(0)
     }
 
     fn to_doc_inner(&self, depth: u32) -> Doc<BoxDoc<()>>
     where
-        B: RenderIdent,
+        B: HasIdent,
     {
         match self {
             Expr::App { func: _, arg: _ } => {
@@ -153,7 +160,7 @@ impl<B> Expr<B> {
             Expr::Let { binder, expr, body } => Doc::text("let")
                 .append(Doc::space())
                 .append(
-                    Doc::text(binder.ident())
+                    Doc::text(binder.ident_with_ty())
                         .append(Doc::space())
                         .append(Doc::text("="))
                         .group()
@@ -174,7 +181,7 @@ impl<B> Expr<B> {
                 .group(),
             Expr::Literal(lit) => lit.to_doc(),
             Expr::Lambda { binder, body } => Doc::text("(\\")
-                .append(Doc::text(binder.ident()))
+                .append(Doc::text(binder.ident_with_ty()))
                 .append(Doc::text("."))
                 .append(Doc::space())
                 .append(body.to_doc().nest(2))
@@ -196,40 +203,38 @@ impl<B> Expr<B> {
         }
     }
 
-    pub fn subst<F>(&self, p: F, replacement: &Expr<B>) -> Expr<B>
+    pub fn subst(&self, var: &String, replacement: &Expr<B>) -> Expr<B>
     where
-        F: Fn(&B) -> bool,
-        B: Clone,
+        B: HasIdent + Clone,
     {
         let mut expr = self.clone();
-        expr.subst_mut(p, replacement);
+        expr.subst_mut(var, replacement);
         expr
     }
 
-    pub fn subst_mut<F>(&mut self, p: F, replacement: &Expr<B>)
+    pub fn subst_mut(&mut self, var: &String, replacement: &Expr<B>)
     where
-        F: Fn(&B) -> bool,
-        B: Clone,
+        B: HasIdent + Clone,
     {
         match self {
-            Expr::Var(v) if p(v) => {
+            Expr::Var(v) if var == &v.ident() => {
                 *self = replacement.clone();
             }
             Expr::Ann { expr, .. } => {
-                expr.subst_mut(p, replacement);
+                expr.subst_mut(var, replacement);
             }
-            Expr::Lambda { binder, body } if p(binder) => {
-                body.subst_mut(p, replacement);
+            Expr::Lambda { binder, body } if var == &binder.ident() => {
+                body.subst_mut(var, replacement);
             }
             Expr::Let { binder, expr, body } => {
-                expr.subst_mut(&p, replacement);
-                if p(binder) {
-                    body.subst_mut(p, replacement);
+                expr.subst_mut(&var, replacement);
+                if var == &binder.ident() {
+                    body.subst_mut(var, replacement);
                 }
             }
             Expr::App { func, arg } => {
-                func.subst_mut(&p, replacement);
-                arg.subst_mut(p, replacement);
+                func.subst_mut(&var, replacement);
+                arg.subst_mut(var, replacement);
             }
             _ => {}
         }
@@ -266,7 +271,7 @@ impl<B> Expr<B> {
 
     pub fn free_vars(&self) -> HashSet<String>
     where
-        B: RenderIdent,
+        B: HasIdent,
     {
         match self {
             Expr::Var(s) => {
