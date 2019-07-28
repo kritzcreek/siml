@@ -2,10 +2,10 @@ extern crate wabt;
 extern crate wasmi;
 use crate::bi_types::Type;
 use crate::codegen::*;
-use crate::expr::Declaration;
+use crate::expr::{Declaration, Var};
 use wasmi::{ImportsBuilder, ModuleInstance, NopExternals};
 
-pub fn test_wasm(prog: Vec<(Declaration, Type)>) {
+pub fn test_wasm(prog: Vec<(Declaration<Var>, Type)>) {
     // let contents =
     //     fs::read_to_string("src/prog.wat").expect("Something went wrong reading the file");
 

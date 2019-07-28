@@ -1,5 +1,5 @@
 use crate::bi_types::Type;
-use crate::expr::{Declaration, Expr, Literal};
+use expr::{Declaration, Expr, Literal, Var, HasIdent};
 use std::collections::{HashMap, HashSet};
 
 pub struct Codegen {
@@ -22,27 +22,25 @@ impl Codegen {
         format!("{}{}", s, self.supply)
     }
 
-    fn populate_global_names(&mut self, prog: &Vec<(Declaration, Type)>) {
+    fn populate_global_names(&mut self, prog: &Vec<(Declaration<Var>, Type)>) {
         let mut index_supply: u32 = 0;
         let mut global_names = HashMap::new();
         for decl in prog {
-            if let (Declaration::Value { name, expr: _ }, ty) = decl {
-                global_names.insert(name.to_string(), (index_supply, ty.clone()));
-                index_supply += 1;
-            }
+            let (Declaration::Value { name, expr: _ }, ty) = decl;
+            global_names.insert(name.to_string(), (index_supply, ty.clone()));
+            index_supply += 1;
         }
         self.global_names = global_names;
     }
 
-    pub fn codegen(mut self, prog: &Vec<(Declaration, Type)>) -> String {
+    pub fn codegen(mut self, prog: &Vec<(Declaration<Var>, Type)>) -> String {
         self.populate_global_names(prog);
         self.out += "(module\n";
         self.function_table();
         self.rts();
         for decl in prog {
-            if let (Declaration::Value { name, expr }, ty) = decl {
-                self.fun(name, expr, ty);
-            }
+            let (Declaration::Value { name, expr }, ty) = decl;
+            self.fun(name, expr, ty);
         }
         self.entry_point();
         self.out += "\n)";
@@ -101,16 +99,16 @@ impl Codegen {
         }
     }
 
-    fn gen_expr(&mut self, expr: Expr<String>) {
+    fn gen_expr(&mut self, expr: Expr<Var>) {
         match expr {
             Expr::Ann { ty, expr } => self.gen_expr(*expr),
             Expr::Var(v) => {
-                if &v == "primadd" {
+                if &v.name == "primadd" {
                     self.out += "(i32.add (local.get $x) (local.get $y))"
-                } else if self.global_names.contains_key(&v) {
-                    self.out += &format!("(call ${}_c)", v)
+                } else if self.global_names.contains_key(&v.name) {
+                    self.out += &format!("(call ${}_c)", v.name)
                 } else {
-                    self.out += &format!("(local.get ${})", v)
+                    self.out += &format!("(local.get ${})", v.name)
                 }
             }
             Expr::Literal(Literal::Int(i)) => self.out += &format!("(i32.const {})", i),
@@ -130,7 +128,7 @@ impl Codegen {
         }
     }
 
-    fn fun(&mut self, name: &str, expr: &Expr<String>, ty: &Type) {
+    fn fun(&mut self, name: &str, expr: &Expr<Var>, ty: &Type) {
         let (binders, body) = expr.collapse_lambdas();
         let (body, let_binders) = self.let_lift(body);
         let mut args = ty.unfold_fun();
@@ -143,7 +141,7 @@ impl Codegen {
         self.out += &format!(" (result i32)\n");
 
         for binder in binders.iter() {
-            self.out += &format!("(local ${} i32)\n", binder)
+            self.out += &format!("(local ${} i32)\n", binder.name)
         }
 
         for binder in let_binders.iter() {
@@ -152,8 +150,9 @@ impl Codegen {
         for (ix, binder) in binders.iter().enumerate() {
             self.out += &format!(
                 "(set_local ${} (i32.load (i32.add (get_local $args) (i32.const {}))))\n",
-                binder,
+                binder.name,
                 ix * 4
+
             )
         }
 

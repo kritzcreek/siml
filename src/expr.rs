@@ -5,8 +5,8 @@ use std::collections::HashSet;
 use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Declaration {
-    Value { name: String, expr: Expr<String> },
+pub enum Declaration<B> {
+    Value { name: String, expr: Expr<B> },
     // Type {
     //     name: String,
     //     constructors: Vec<DataConstructor>,
@@ -55,8 +55,8 @@ impl HasIdent for String {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Var {
-    name: String,
-    ty: Type,
+    pub name: String,
+    pub ty: Type,
 }
 
 impl HasIdent for Var {
@@ -295,5 +295,13 @@ impl<B> Expr<B> {
             Expr::Literal(_) => HashSet::new(),
             Expr::Ann { expr, ty: _ } => expr.free_vars(),
         }
+    }
+
+    pub fn int(i: i32) -> Self {
+        Expr::Literal(Literal::Int(i))
+    }
+
+    pub fn bool(b: bool) -> Self {
+        Expr::Literal(Literal::Bool(b))
     }
 }

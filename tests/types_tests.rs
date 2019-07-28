@@ -13,7 +13,7 @@ fn ty(input: &str) -> Type {
     }
 }
 
-fn expr(input: &str) -> Expr {
+fn expr(input: &str) -> Expr<String> {
     let lexer = Lexer::new(input);
     let res = ExprParser::new().parse(lexer);
     match res {
@@ -30,7 +30,7 @@ fn test_ty_eq(ty1: Type, ty2: Type) {
     test_ty_eq_subst(ty1, ty2, Substitution::new())
 }
 
-fn test_infer(expr: Expr, ty: Type) {
+fn test_infer(expr: Expr<String>, ty: Type) {
     test_ty_eq(TypeChecker::new().infer_expr(&expr).unwrap(), ty)
 }
 

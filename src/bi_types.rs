@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::expr::{Declaration, Expr, ParserExpr, Literal};
+use crate::expr::{Declaration, Expr, Literal, ParserExpr, TypedExpr, Var};
 use crate::pretty::{parens_if, render_doc};
 use pretty::{BoxDoc, Doc};
 use std::collections::HashSet;
@@ -888,33 +888,52 @@ impl TypeChecker {
         }
     }
 
-    fn check(&mut self, ctx: Context, expr: &ParserExpr, ty: &Type) -> Result<Context, TypeError> {
+    fn check(
+        &mut self,
+        ctx: Context,
+        expr: &ParserExpr,
+        ty: &Type,
+    ) -> Result<(Context, TypedExpr), TypeError> {
         match (expr, ty) {
-            (Expr::Literal(Literal::Int(_)), ty) if ty == &Type::int() => Ok(ctx),
-            (Expr::Literal(Literal::Bool(_)), ty) if ty == &Type::boolean() => Ok(ctx),
+            (Expr::Literal(Literal::Int(i)), ty) if ty == &Type::int() => Ok((ctx, Expr::int(*i))),
+            (Expr::Literal(Literal::Bool(b)), ty) if ty == &Type::boolean() => {
+                Ok((ctx, Expr::bool(*b)))
+            }
             (Expr::Lambda { binder, body }, Type::Fun { arg, result }) => {
                 // ->l
                 let mut new_ctx = ctx;
                 let anno_elem = ContextElem::Anno(binder.clone(), *arg.clone());
                 new_ctx.push(anno_elem.clone());
-                let mut res_ctx = self.check(new_ctx, body, result)?;
+                let (mut res_ctx, body) = self.check(new_ctx, body, result)?;
                 res_ctx.drop_marker(anno_elem);
-                Ok(res_ctx)
+                Ok((res_ctx, body))
             }
             (Expr::Let { binder, expr, body }, ty) => {
-                let (ctx, ty_binder) = self.infer(ctx, expr)?;
+                let (ctx, ty_binder, typed_expr) = self.infer(ctx, expr)?;
                 let binder_fresh = self.name_gen.fresh_var();
                 let mut new_ctx = ctx;
-                let anno_elem = ContextElem::Anno(binder_fresh.clone(), ty_binder);
+                let anno_elem = ContextElem::Anno(binder_fresh.clone(), ty_binder.clone());
                 new_ctx.push(anno_elem);
-                let res_ctx =
+                let (res_ctx, typed_body) =
                     self.check(new_ctx, &body.subst(binder, &Expr::Var(binder_fresh)), ty)?;
-                Ok(res_ctx)
+                let ty_binder = res_ctx.apply(&ty_binder);
+                Ok((
+                    res_ctx,
+                    Expr::Let {
+                        binder: Var {
+                            name: binder.to_string(),
+                            ty: ty_binder,
+                        },
+                        expr: Box::new(typed_expr),
+                        body: Box::new(typed_body),
+                    },
+                ))
             }
             (_, Type::Poly { vars, ty }) => {
                 //forall_l
                 let mut tmp_ctx = ctx;
-                let (renamed_ty, fresh_vars) = self.rename_poly(&vars, &ty, |v| Type::Var(v.clone()));
+                let (renamed_ty, fresh_vars) =
+                    self.rename_poly(&vars, &ty, |v| Type::Var(v.clone()));
                 let marker = ContextElem::Universal(fresh_vars[0].clone());
                 tmp_ctx.push_elems(
                     fresh_vars
@@ -922,47 +941,76 @@ impl TypeChecker {
                         .map(|v| ContextElem::Universal(v))
                         .collect(),
                 );
-                let mut res_ctx = self.check(tmp_ctx, expr, &renamed_ty)?;
+                let (mut res_ctx, typed_expr) = self.check(tmp_ctx, expr, &renamed_ty)?;
                 res_ctx.drop_marker(marker);
-                Ok(res_ctx)
+                Ok((res_ctx, typed_expr))
             }
             _ => {
                 // Sub
-                let (ctx, inferred) = self.infer(ctx, expr)?;
+                let (ctx, inferred, typed_expr) = self.infer(ctx, expr)?;
                 let inferred = ctx.apply(&inferred);
                 let ty = ctx.apply(ty);
-                self.subtype(ctx, &inferred, &ty)
+                let new_ctx = self.subtype(ctx, &inferred, &ty)?;
+                // TODO: Apply new_ctx
+                Ok((new_ctx, typed_expr))
             }
         }
     }
 
-    fn infer(&mut self, ctx: Context, expr: &ParserExpr) -> Result<(Context, Type), TypeError> {
+    fn infer(
+        &mut self,
+        ctx: Context,
+        expr: &ParserExpr,
+    ) -> Result<(Context, Type, TypedExpr), TypeError> {
         match expr {
-            Expr::Literal(Literal::Int(_)) => Ok((ctx, Type::int())),
-            Expr::Literal(Literal::Bool(_)) => Ok((ctx, Type::boolean())),
+            Expr::Literal(Literal::Int(i)) => Ok((ctx, Type::int(), Expr::int(*i))),
+            Expr::Literal(Literal::Bool(b)) => Ok((ctx, Type::boolean(), Expr::bool(*b))),
             Expr::Var(var) => {
                 // Var
                 let res = match ctx.find_var(var) {
                     Some(ty) => Ok(ty.clone()),
                     None => Err(TypeError::UnknownVar(var.clone())),
                 };
-                res.map(|ty| (ctx, ty))
+                res.map(|ty| {
+                    (
+                        ctx,
+                        ty.clone(),
+                        Expr::Var(Var {
+                            name: var.to_string(),
+                            ty: ty,
+                        }),
+                    )
+                })
             }
             Expr::Ann { expr, ty } => {
                 // Anno
                 if ctx.wf_type(ty) {
-                    let new_ctx = self.check(ctx, expr, ty)?;
-                    Ok((new_ctx, ty.clone()))
+                    let (new_ctx, typed_expr) = self.check(ctx, expr, ty)?;
+                    Ok((new_ctx, ty.clone(), typed_expr))
                 } else {
                     Err(TypeError::InvalidAnnotation(ty.clone()))
                 }
             }
             Expr::Let { binder, expr, body } => {
-                let (ctx, ty_binder) = self.infer(ctx, expr)?;
+                let (ctx, ty_binder, typed_expr) = self.infer(ctx, expr)?;
                 let binder_fresh = self.name_gen.fresh_var();
                 let mut tmp_ctx = ctx;
-                tmp_ctx.push(ContextElem::Anno(binder_fresh.clone(), ty_binder));
-                self.infer(tmp_ctx, &body.subst(binder, &Expr::Var(binder_fresh)))
+                tmp_ctx.push(ContextElem::Anno(binder_fresh.clone(), ty_binder.clone()));
+                let (res_ctx, ty_body, typed_body) =
+                    self.infer(tmp_ctx, &body.subst(binder, &Expr::Var(binder_fresh)))?;
+                let ty_binder = res_ctx.apply(&ty_binder);
+                Ok((
+                    res_ctx,
+                    ty_body,
+                    Expr::Let {
+                        binder: Var {
+                            name: binder.to_string(),
+                            ty: ty_binder,
+                        },
+                        expr: Box::new(typed_expr),
+                        body: Box::new(typed_body),
+                    },
+                ))
             }
             Expr::Lambda { binder, body } => {
                 // ->l=>
@@ -977,18 +1025,27 @@ impl TypeChecker {
                     marker.clone(),
                 ]);
 
-                let mut res_ctx = self.check(
+                let (mut res_ctx, typed_body) = self.check(
                     tmp_ctx,
                     &body.subst(binder, &Expr::Var(binder_fresh)),
                     &Type::Existential(b.clone()),
                 )?;
                 res_ctx.drop_marker(marker);
-                Ok((res_ctx, Type::fun(Type::ex(&a), Type::ex(&b))))
+                Ok((res_ctx, Type::fun(Type::ex(&a), Type::ex(&b)), typed_body))
             }
             Expr::App { func, arg } => {
-                let (ctx, func_ty) = self.infer(ctx, func)?;
+                let (ctx, func_ty, typed_func) = self.infer(ctx, func)?;
                 let applied_func_ty = ctx.apply(&func_ty);
-                self.infer_application(ctx, &applied_func_ty, arg)
+                let (ctx, app_ty, typed_arg) =
+                    self.infer_application(ctx, &applied_func_ty, arg)?;
+                Ok((
+                    ctx,
+                    app_ty,
+                    Expr::App {
+                        func: Box::new(typed_func),
+                        arg: Box::new(typed_arg),
+                    },
+                ))
             }
         }
     }
@@ -998,7 +1055,7 @@ impl TypeChecker {
         ctx: Context,
         ty: &Type,
         expr: &ParserExpr,
-    ) -> Result<(Context, Type), TypeError> {
+    ) -> Result<(Context, Type, TypedExpr), TypeError> {
         match ty {
             Type::Poly { vars, ty: ty1 } => {
                 // forall App
@@ -1032,15 +1089,15 @@ impl TypeChecker {
                         ),
                     ],
                 );
-                let res_ctx = self.check(new_ctx, expr, &Type::Existential(a1))?;
-                Ok((res_ctx, Type::Existential(a2)))
+                let (res_ctx, typed_expr) = self.check(new_ctx, expr, &Type::Existential(a1))?;
+                Ok((res_ctx, Type::Existential(a2), typed_expr))
             }
             Type::Fun { arg, result } => {
                 // ->App
                 debug!("[->App] {} . {}", ty, expr);
-                let res_ctx = self.check(ctx, expr, arg)?;
+                let (res_ctx, typed_expr) = self.check(ctx, expr, arg)?;
                 let applied_res = res_ctx.apply(result);
-                Ok((res_ctx, applied_res))
+                Ok((res_ctx, applied_res, typed_expr))
             }
             ty => Err(TypeError::IsNotAFunction(ty.clone())),
         }
@@ -1058,26 +1115,23 @@ impl TypeChecker {
     }
     pub fn synth_prog(
         &mut self,
-        prog: &Vec<Declaration>,
-    ) -> Result<Vec<(Declaration, Type)>, TypeError> {
+        prog: &Vec<Declaration<String>>,
+    ) -> Result<Vec<(Declaration<Var>, Type)>, TypeError> {
         let mut ctx = Context::new(vec![ContextElem::Anno("primadd".to_string(), Type::int())]);
 
-        for decl in prog.into_iter() {
-            if let Declaration::Value { name, expr } = decl {
-                let (mut new_ctx, ty) = self.infer(ctx, expr)?;
-                new_ctx.push(ContextElem::Anno(name.to_string(), new_ctx.apply(&ty)));
-                ctx = new_ctx;
-            }
-        }
+        let decls = prog.into_iter().map(|Declaration::Value { name, expr} | {
+            let (mut new_ctx, ty, expr) = self.infer(ctx, expr)?;
+            new_ctx.push(ContextElem::Anno(name.to_string(), new_ctx.apply(&ty)));
+            ctx = new_ctx;
+        });
 
         let mut result = vec![];
-        for decl in prog.into_iter() {
-            if let Declaration::Value { name, expr: _ } = decl {
-                let ty = ctx
-                    .find_var(name)
-                    .expect(&format!("Missing type for {}", name));
-                result.push((decl.clone(), ty.clone()));
-            }
+        for decl in decls {
+            let Declaration::Value { name, expr } = decl;
+            let ty = ctx
+                .find_var(&name)
+                .expect(&format!("Missing type for {}", name));
+            result.push((decl, ty.clone()));
         }
         Ok(result)
     }
