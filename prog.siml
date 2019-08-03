@@ -5,4 +5,5 @@ let twice : forall a. (a -> a) -> a -> a =
   \f. \x. f (f x);
 
 let main : Int =
-  twice (twice (add 10)) 5;
+  let v = twice (add 10) 10
+  in add v (let x = 5 in x);

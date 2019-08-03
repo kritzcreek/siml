@@ -1,6 +1,6 @@
 use crate::bi_types::Type;
 use crate::expr::{Declaration, Expr, Literal};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub struct Codegen {
     supply: u32,
@@ -19,7 +19,7 @@ impl Codegen {
 
     fn fresh_name(&mut self, s: String) -> String {
         self.supply += 1;
-        format!("${}{}", s, self.supply)
+        format!("{}{}", s, self.supply)
     }
 
     fn populate_global_names(&mut self, prog: &Vec<(Declaration, Type)>) {
@@ -54,6 +54,46 @@ impl Codegen {
         self.out += CLOSURE_RTS;
     }
 
+    pub fn let_lift(&mut self, expr: Expr) -> (Expr, HashSet<String>) {
+        let mut used: HashSet<String> = HashSet::new();
+        (self.let_lift_inner(&mut used, expr), used)
+    }
+
+    fn let_lift_inner(&mut self, used: &mut HashSet<String>, expr: Expr) -> Expr {
+        match expr {
+            Expr::App { func, arg } => Expr::App {
+                func: Box::new(self.let_lift_inner(used, *func)),
+                arg: Box::new(self.let_lift_inner(used, *arg)),
+            },
+            Expr::Lambda { binder, body } => Expr::Lambda {
+                binder,
+                body: Box::new(self.let_lift_inner(used, *body)),
+            },
+            Expr::Let { binder, expr, body } => {
+                let fresh_binder;
+                let mut body = body;
+                if used.contains(&binder) {
+                    fresh_binder = self.fresh_name(binder.clone());
+                    body.subst_mut(&binder, &Expr::Var(fresh_binder.clone()))
+                } else {
+                    fresh_binder = binder
+                }
+                used.insert(fresh_binder.clone());
+                Expr::Let {
+                    binder: fresh_binder,
+                    expr: Box::new(self.let_lift_inner(used, *expr)),
+                    body: Box::new(self.let_lift_inner(used, *body)),
+                }
+            }
+            Expr::Var(var) => Expr::Var(var),
+            Expr::Literal(lit) => Expr::Literal(lit),
+            Expr::Ann { expr, ty } => Expr::Ann {
+                expr: Box::new(self.let_lift_inner(used, *expr)),
+                ty,
+            },
+        }
+    }
+
     fn function_table(&mut self) {
         self.out += &format!("(table {} anyfunc)", self.global_names.len());
         for (name, (n, _)) in self.global_names.iter() {
@@ -80,12 +120,19 @@ impl Codegen {
                 self.gen_expr(*arg);
                 self.out += &format!(")");
             }
+            Expr::Let { binder, expr, body } => {
+                self.out += &format!("(local.set ${}", binder);
+                self.gen_expr(*expr);
+                self.out += &format!(")");
+                self.gen_expr(*body);
+            }
             _ => panic!("Unknown Expr codegen {:?}", expr),
         }
     }
 
     fn fun(&mut self, name: &str, expr: &Expr, ty: &Type) {
         let (binders, body) = expr.collapse_lambdas();
+        let (body, let_binders) = self.let_lift(body);
         let mut args = ty.unfold_fun();
         let res = args.pop();
         self.out += &format!("\n(func ${}", name);
@@ -96,6 +143,10 @@ impl Codegen {
         self.out += &format!(" (result i32)\n");
 
         for binder in binders.iter() {
+            self.out += &format!("(local ${} i32)\n", binder)
+        }
+
+        for binder in let_binders.iter() {
             self.out += &format!("(local ${} i32)\n", binder)
         }
         for (ix, binder) in binders.iter().enumerate() {
@@ -193,3 +244,30 @@ const CLOSURE_RTS: &str = r#"
           (i32.store (i32.add (get_local $closure) (i32.const 4)) (i32.add (get_local $applied) (i32.const 1)))
           (get_local $closure))))
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::token::Lexer;
+    use crate::grammar::ExprParser;
+
+    fn expr(input: &str) -> Expr {
+        let lexer = Lexer::new(input);
+        let res = ExprParser::new().parse(lexer);
+        match res {
+            Err(err) => panic!("{:?}", err),
+            Ok(ty) => ty,
+        }
+    }
+
+    #[test]
+    fn let_lifting() {
+        let my_expr = expr("let hello = x in (let hello = x in hello)");
+
+        let mut cg = Codegen::new();
+        let (lifted, names) = cg.let_lift(my_expr);
+        println!("{}", lifted);
+        println!("{:#?}", names);
+        assert!(false)
+    }
+}
