@@ -100,9 +100,9 @@ impl Codegen {
         }
         for (ix, binder) in binders.iter().enumerate() {
             self.out += &format!(
-                "(set_local ${} (i32.load16_u (i32.add (get_local $args) (i32.const {}))))\n",
+                "(set_local ${} (i32.load (i32.add (get_local $args) (i32.const {}))))\n",
                 binder,
-                ix * 2
+                ix * 4
             )
         }
 
@@ -141,23 +141,23 @@ const ALLOCATOR_RTS: &str = r#"
 const CLOSURE_RTS: &str = r#"
  (func $make_closure (param $arity i32) (param $code_pointer i32) (result i32)
        (local $closure_start i32)
-       ;; The size of a closure is 6bytes + 2bytes per argument
+       ;; The size of a closure is 12bytes + 4bytes per argument
        (set_local $closure_start
                   (call $allocate
-                        (i32.add (i32.const 6)
-                                 (i32.mul (i32.const 2) (get_local $arity)))))
+                        (i32.add (i32.const 12)
+                                 (i32.mul (i32.const 4) (get_local $arity)))))
        ;; Initializes arity
-       (i32.store16
+       (i32.store
         (get_local $closure_start)
         (get_local $arity))
        ;; Initializes applied arg counter to 0
-       (i32.store16
-        (i32.add (get_local $closure_start) (i32.const 2))
+       (i32.store
+        (i32.add (get_local $closure_start) (i32.const 4))
         (i32.const 0))
        ;; writes the code pointer
-       (i32.store16
-        (i32.add (i32.add (get_local $closure_start) (i32.const 4)) ;; skips over arity and applied counter
-                 (i32.mul (get_local $arity) (i32.const 2))) ;; skips over arguments
+       (i32.store
+        (i32.add (i32.add (get_local $closure_start) (i32.const 8)) ;; skips over arity and applied counter
+                 (i32.mul (get_local $arity) (i32.const 4))) ;; skips over arguments
         (get_local $code_pointer))
        (get_local $closure_start))
 
@@ -169,27 +169,27 @@ const CLOSURE_RTS: &str = r#"
        (local $next_arg i32)
        (local $code_pointer_offset i32)
 
-       (set_local $arity (i32.load16_u (get_local $closure)))
-       (set_local $applied (i32.load16_u (i32.add (get_local $closure) (i32.const 2))))
-       (set_local $arg_start (i32.add (get_local $closure) (i32.const 4)))
+       (set_local $arity (i32.load (get_local $closure)))
+       (set_local $applied (i32.load (i32.add (get_local $closure) (i32.const 4))))
+       (set_local $arg_start (i32.add (get_local $closure) (i32.const 8)))
        (set_local $next_arg (i32.add (get_local $arg_start)
                                      (i32.mul (get_local $applied)
-                                              (i32.const 2))))
+                                              (i32.const 4))))
        (set_local $code_pointer_offset
                   (i32.add (get_local $arg_start)
                            (i32.mul (get_local $arity)
-                                    (i32.const 2))))
+                                    (i32.const 4))))
 
        ;; write the supplied argument into its spot
        ;; TODO: We should be copying the closure here
-       (i32.store16 (get_local $next_arg) (get_local $arg))
+       (i32.store (get_local $next_arg) (get_local $arg))
        (if (result i32)
            (i32.eq (get_local $arity) (i32.add (get_local $applied) (i32.const 1)))
          (then
           ;; if all arguments have been supplied we're ready to execute the body
-          (call_indirect (type $i32_to_i32) (get_local $arg_start) (i32.load16_u (get_local $code_pointer_offset))))
+          (call_indirect (type $i32_to_i32) (get_local $arg_start) (i32.load (get_local $code_pointer_offset))))
          (else
           ;; If we're still missing arguments we bump the applied counter and return the new closure
-          (i32.store16 (i32.add (get_local $closure) (i32.const 2)) (i32.add (get_local $applied) (i32.const 1)))
+          (i32.store (i32.add (get_local $closure) (i32.const 4)) (i32.add (get_local $applied) (i32.const 1)))
           (get_local $closure))))
 "#;
