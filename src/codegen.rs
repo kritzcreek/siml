@@ -1,5 +1,5 @@
 use crate::bi_types::Type;
-use expr::{Declaration, Expr, Literal, Var, HasIdent};
+use crate::expr::{Declaration, Expr, Literal, Var, HasIdent};
 use std::collections::{HashMap, HashSet};
 
 pub struct Codegen {
