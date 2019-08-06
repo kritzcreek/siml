@@ -1,5 +1,5 @@
 use crate::bi_types::Type;
-use crate::expr::{Declaration, Expr, Literal, Var, HasIdent};
+use crate::expr::{Declaration, Expr, HasIdent, Literal, TypedExpr, Var};
 use std::collections::{HashMap, HashSet};
 
 pub struct Codegen {
@@ -52,12 +52,12 @@ impl Codegen {
         self.out += CLOSURE_RTS;
     }
 
-    pub fn let_lift(&mut self, expr: Expr) -> (Expr, HashSet<String>) {
+    pub fn let_lift(&mut self, expr: TypedExpr) -> (TypedExpr, HashSet<String>) {
         let mut used: HashSet<String> = HashSet::new();
         (self.let_lift_inner(&mut used, expr), used)
     }
 
-    fn let_lift_inner(&mut self, used: &mut HashSet<String>, expr: Expr) -> Expr {
+    fn let_lift_inner(&mut self, used: &mut HashSet<String>, expr: TypedExpr) -> Expr<Var> {
         match expr {
             Expr::App { func, arg } => Expr::App {
                 func: Box::new(self.let_lift_inner(used, *func)),
@@ -70,15 +70,24 @@ impl Codegen {
             Expr::Let { binder, expr, body } => {
                 let fresh_binder;
                 let mut body = body;
-                if used.contains(&binder) {
-                    fresh_binder = self.fresh_name(binder.clone());
-                    body.subst_mut(&binder, &Expr::Var(fresh_binder.clone()))
+                if used.contains(&binder.ident()) {
+                    fresh_binder = self.fresh_name(binder.ident());
+                    body.subst_mut(
+                        &binder.ident(),
+                        &Expr::Var(Var {
+                            name: fresh_binder.clone(),
+                            ty: binder.ty.clone(),
+                        }),
+                    )
                 } else {
-                    fresh_binder = binder
+                    fresh_binder = binder.ident()
                 }
                 used.insert(fresh_binder.clone());
                 Expr::Let {
-                    binder: fresh_binder,
+                    binder: Var {
+                        name: fresh_binder,
+                        ty: binder.ty,
+                    },
                     expr: Box::new(self.let_lift_inner(used, *expr)),
                     body: Box::new(self.let_lift_inner(used, *body)),
                 }
@@ -119,7 +128,7 @@ impl Codegen {
                 self.out += &format!(")");
             }
             Expr::Let { binder, expr, body } => {
-                self.out += &format!("(local.set ${}", binder);
+                self.out += &format!("(local.set ${}", binder.ident());
                 self.gen_expr(*expr);
                 self.out += &format!(")");
                 self.gen_expr(*body);
@@ -128,9 +137,9 @@ impl Codegen {
         }
     }
 
-    fn fun(&mut self, name: &str, expr: &Expr<Var>, ty: &Type) {
+    fn fun(&mut self, name: &str, expr: &TypedExpr, ty: &Type) {
         let (binders, body) = expr.collapse_lambdas();
-        let (body, let_binders) = self.let_lift(body);
+        let (body, let_binders) = self.let_lift(body.clone());
         let mut args = ty.unfold_fun();
         let res = args.pop();
         self.out += &format!("\n(func ${}", name);
@@ -152,7 +161,6 @@ impl Codegen {
                 "(set_local ${} (i32.load (i32.add (get_local $args) (i32.const {}))))\n",
                 binder.name,
                 ix * 4
-
             )
         }
 
@@ -247,8 +255,8 @@ const CLOSURE_RTS: &str = r#"
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::token::Lexer;
     use crate::grammar::ExprParser;
+    use crate::token::Lexer;
 
     fn expr(input: &str) -> Expr {
         let lexer = Lexer::new(input);
