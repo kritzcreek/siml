@@ -1,4 +1,4 @@
-use crate::expr::{Expr, Literal, HasIdent};
+use crate::expr::{Expr, HasIdent, Literal};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -61,7 +61,8 @@ fn initial_env() -> Env {
 
 impl Term {
     fn from_expr<B>(expr: &Expr<B>) -> Term
-        where B: HasIdent
+    where
+        B: HasIdent,
     {
         match expr {
             Expr::App { func, arg } => Term::App {
@@ -86,7 +87,8 @@ impl Term {
     }
 
     pub fn eval_expr<B>(expr: &Expr<B>) -> Result<Term, EvalError>
-        where B: HasIdent
+    where
+        B: HasIdent,
     {
         Term::eval(&initial_env(), Term::from_expr(expr))
     }

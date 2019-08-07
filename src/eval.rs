@@ -1,5 +1,4 @@
 use crate::expr::Expr;
-use std::collections::HashSet;
 
 type EvalExpr = Expr<String>;
 
@@ -61,7 +60,12 @@ impl Eval {
         format!("{}{}", self.supply, var)
     }
 
-    fn substitute(&mut self, expr: &EvalExpr, scrutinee: &String, replacement: &EvalExpr) -> EvalExpr {
+    fn substitute(
+        &mut self,
+        expr: &EvalExpr,
+        scrutinee: &String,
+        replacement: &EvalExpr,
+    ) -> EvalExpr {
         match expr {
             Expr::Var(x) => {
                 if scrutinee == x {

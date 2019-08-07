@@ -553,6 +553,38 @@ impl Context {
             },
         }
     }
+
+    fn apply_(&self, ty: Type) -> Type {
+        match ty {
+            Type::Constructor(_) => ty,
+            Type::Var(_) => ty,
+            Type::Existential(ref ex) => {
+                self.find_solved(ex).map_or_else(|| ty, |ty| self.apply(ty))
+            }
+            Type::Fun { arg, result } => Type::Fun {
+                arg: Box::new(self.apply_(*arg)),
+                result: Box::new(self.apply_(*result)),
+            },
+            Type::Poly { vars, ty } => Type::Poly {
+                vars: vars.clone(),
+                ty: Box::new(self.apply_(*ty)),
+            },
+            Type::App {
+                type_constructor,
+                arguments,
+            } => Type::App {
+                type_constructor: Box::new(self.apply_(*type_constructor)),
+                arguments: arguments.iter().map(|arg| self.apply(arg)).collect(),
+            },
+        }
+    }
+
+    fn apply_expr(&self, expr: TypedExpr) -> TypedExpr {
+        expr.map(&|var: Var| Var {
+            name: var.name,
+            ty: self.apply_(var.ty),
+        })
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -905,18 +937,31 @@ impl TypeChecker {
                 let anno_elem = ContextElem::Anno(binder.clone(), *arg.clone());
                 new_ctx.push(anno_elem.clone());
                 let (mut res_ctx, body) = self.check(new_ctx, body, result)?;
+                let ty_binder = res_ctx
+                    .find_var(binder)
+                    .expect("var disappeared in bi_types")
+                    .clone();
                 res_ctx.drop_marker(anno_elem);
-                Ok((res_ctx, body))
+                Ok((
+                    res_ctx,
+                    Expr::Lambda {
+                        binder: Var {
+                            name: binder.clone(),
+                            ty: ty_binder,
+                        },
+                        body: Box::new(body),
+                    },
+                ))
             }
             (Expr::Let { binder, expr, body }, ty) => {
                 let (ctx, ty_binder, typed_expr) = self.infer(ctx, expr)?;
-                let binder_fresh = self.name_gen.fresh_var();
                 let mut new_ctx = ctx;
-                let anno_elem = ContextElem::Anno(binder_fresh.clone(), ty_binder.clone());
-                new_ctx.push(anno_elem);
-                let (res_ctx, typed_body) =
-                    self.check(new_ctx, &body.subst(binder, &Expr::Var(binder_fresh)), ty)?;
+                let anno_elem = ContextElem::Anno(binder.clone(), ty_binder.clone());
+                new_ctx.push(anno_elem.clone());
+                let (mut res_ctx, typed_body) =
+                    self.check(new_ctx, &body, ty)?;
                 let ty_binder = res_ctx.apply(&ty_binder);
+                res_ctx.drop_marker(anno_elem);
                 Ok((
                     res_ctx,
                     Expr::Let {
@@ -941,6 +986,7 @@ impl TypeChecker {
                         .map(|v| ContextElem::Universal(v))
                         .collect(),
                 );
+                // TODO: Can I reverse the fresh_vars to their original name here safely?
                 let (mut res_ctx, typed_expr) = self.check(tmp_ctx, expr, &renamed_ty)?;
                 res_ctx.drop_marker(marker);
                 Ok((res_ctx, typed_expr))
@@ -951,8 +997,8 @@ impl TypeChecker {
                 let inferred = ctx.apply(&inferred);
                 let ty = ctx.apply(ty);
                 let new_ctx = self.subtype(ctx, &inferred, &ty)?;
-                // TODO: Apply new_ctx
-                Ok((new_ctx, typed_expr))
+                let new_typed_expr = new_ctx.apply_expr(typed_expr);
+                Ok((new_ctx, new_typed_expr))
             }
         }
     }
@@ -995,10 +1041,12 @@ impl TypeChecker {
                 let (ctx, ty_binder, typed_expr) = self.infer(ctx, expr)?;
                 let binder_fresh = self.name_gen.fresh_var();
                 let mut tmp_ctx = ctx;
-                tmp_ctx.push(ContextElem::Anno(binder_fresh.clone(), ty_binder.clone()));
-                let (res_ctx, ty_body, typed_body) =
+                let marker = ContextElem::Anno(binder_fresh.clone(), ty_binder.clone());
+                tmp_ctx.push(marker.clone());
+                let (mut res_ctx, ty_body, typed_body) =
                     self.infer(tmp_ctx, &body.subst(binder, &Expr::Var(binder_fresh)))?;
                 let ty_binder = res_ctx.apply(&ty_binder);
+                res_ctx.drop_marker(marker);
                 Ok((
                     res_ctx,
                     ty_body,
@@ -1031,7 +1079,17 @@ impl TypeChecker {
                     &Type::Existential(b.clone()),
                 )?;
                 res_ctx.drop_marker(marker);
-                Ok((res_ctx, Type::fun(Type::ex(&a), Type::ex(&b)), typed_body))
+                Ok((
+                    res_ctx,
+                    Type::fun(Type::ex(&a), Type::ex(&b)),
+                    Expr::Lambda {
+                        binder: Var {
+                            name: binder.clone(),
+                            ty: Type::ex(&a),
+                        },
+                        body: Box::new(typed_body),
+                    },
+                ))
             }
             Expr::App { func, arg } => {
                 let (ctx, func_ty, typed_func) = self.infer(ctx, func)?;
@@ -1118,21 +1176,22 @@ impl TypeChecker {
         prog: &Vec<Declaration<String>>,
     ) -> Result<Vec<(Declaration<Var>, Type)>, TypeError> {
         let mut ctx = Context::new(vec![ContextElem::Anno("primadd".to_string(), Type::int())]);
+        let mut result = vec![];
 
-        let decls = prog.into_iter().map(|Declaration::Value { name, expr} | {
+        for Declaration::Value { name, expr } in prog {
             let (mut new_ctx, ty, expr) = self.infer(ctx, expr)?;
             new_ctx.push(ContextElem::Anno(name.to_string(), new_ctx.apply(&ty)));
-            ctx = new_ctx;
-        });
 
-        let mut result = vec![];
-        for decl in decls {
-            let Declaration::Value { name, expr } = decl;
-            let ty = ctx
-                .find_var(&name)
-                .expect(&format!("Missing type for {}", name));
-            result.push((decl, ty.clone()));
+            ctx = new_ctx;
+            result.push((
+                Declaration::Value {
+                    name: name.clone(),
+                    expr,
+                },
+                ty,
+            ));
         }
+
         Ok(result)
     }
 }

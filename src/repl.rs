@@ -1,5 +1,5 @@
 use crate::bi_types;
-use crate::expr::{ParserExpr};
+use crate::expr::ParserExpr;
 use crate::grammar;
 use crate::term;
 use crate::term::Term;

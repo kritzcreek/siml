@@ -110,7 +110,7 @@ impl Codegen {
 
     fn gen_expr(&mut self, expr: Expr<Var>) {
         match expr {
-            Expr::Ann { ty, expr } => self.gen_expr(*expr),
+            Expr::Ann { ty: _, expr } => self.gen_expr(*expr),
             Expr::Var(v) => {
                 if &v.name == "primadd" {
                     self.out += "(i32.add (local.get $x) (local.get $y))"
@@ -138,10 +138,12 @@ impl Codegen {
     }
 
     fn fun(&mut self, name: &str, expr: &TypedExpr, ty: &Type) {
+        info!("[gen fun] {} {}\n{}", name, ty, expr);
         let (binders, body) = expr.collapse_lambdas();
         let (body, let_binders) = self.let_lift(body.clone());
         let mut args = ty.unfold_fun();
-        let res = args.pop();
+        // All results are i32's anyway
+        let _res = args.pop();
         self.out += &format!("\n(func ${}", name);
         let binder_count = binders.len();
         if binder_count != 0 {

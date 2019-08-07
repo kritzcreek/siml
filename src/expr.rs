@@ -105,7 +105,7 @@ impl<B: HasIdent> fmt::Display for Expr<B> {
 }
 
 impl<B> Expr<B> {
-    pub fn map<A: Sized, F>(self, f: F) -> Expr<A>
+    pub fn map<A: Sized, F>(self, f: &F) -> Expr<A>
     where
         F: Fn(B) -> A,
     {
@@ -117,11 +117,11 @@ impl<B> Expr<B> {
             },
             Expr::Let { binder, expr, body } => Expr::Let {
                 binder: f(binder),
-                expr: Box::new(expr.map(&f)),
+                expr: Box::new(expr.map(f)),
                 body: Box::new(body.map(f)),
             },
             Expr::App { func, arg } => Expr::App {
-                func: Box::new(func.map(&f)),
+                func: Box::new(func.map(f)),
                 arg: Box::new(arg.map(f)),
             },
             Expr::Ann { ty, expr } => Expr::Ann {
@@ -157,28 +157,35 @@ impl<B> Expr<B> {
                     inner
                 }
             }
-            Expr::Let { binder, expr, body } => Doc::text("let")
-                .append(Doc::space())
-                .append(
-                    Doc::text(binder.ident_with_ty())
-                        .append(Doc::space())
-                        .append(Doc::text("="))
-                        .group()
-                        .append(Doc::space())
-                        .append(expr.to_doc())
-                        .nest(2)
-                        .group(),
-                )
-                .group()
-                .nest(2)
-                .append(Doc::space())
-                .append(
-                    Doc::text("in")
-                        .append(Doc::space())
-                        .append(body.to_doc_inner(0))
-                        .nest(2),
-                )
-                .group(),
+            Expr::Let { binder, expr, body } => {
+                let inner = Doc::text("let")
+                    .append(Doc::space())
+                    .append(
+                        Doc::text(binder.ident_with_ty())
+                            .append(Doc::space())
+                            .append(Doc::text("="))
+                            .group()
+                            .append(Doc::space())
+                            .append(expr.to_doc())
+                            .nest(2)
+                            .group(),
+                    )
+                    .group()
+                    .nest(2)
+                    .append(Doc::space())
+                    .append(
+                        Doc::text("in")
+                            .append(Doc::space())
+                            .append(body.to_doc_inner(0))
+                            .nest(2),
+                    )
+                    .group();
+                if depth > 0 {
+                    Doc::text("(").append(inner).append(Doc::text(")")).group()
+                } else {
+                    inner
+                }
+            }
             Expr::Literal(lit) => lit.to_doc(),
             Expr::Lambda { binder, body } => Doc::text("(\\")
                 .append(Doc::text(binder.ident_with_ty()))
