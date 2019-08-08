@@ -9,5 +9,5 @@ let twice : forall a. (a -> a) -> a -> a =
 
 let main : Int =
   let const10 = const 10 in
-  let v = twice (twice (twice (add 10))) (const10 8) in
-  add v (let x = 5 in x);
+  let x = twice (add 10) 8 in
+  add x (let x = 5 in x);

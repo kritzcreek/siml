@@ -229,12 +229,12 @@ impl<B> Expr<B> {
             Expr::Ann { expr, .. } => {
                 expr.subst_mut(var, replacement);
             }
-            Expr::Lambda { binder, body } if var == &binder.ident() => {
+            Expr::Lambda { binder, body } if var != &binder.ident() => {
                 body.subst_mut(var, replacement);
             }
             Expr::Let { binder, expr, body } => {
                 expr.subst_mut(&var, replacement);
-                if var == &binder.ident() {
+                if var != &binder.ident() {
                     body.subst_mut(var, replacement);
                 }
             }
@@ -310,4 +310,37 @@ impl<B> Expr<B> {
     pub fn bool(b: bool) -> Self {
         Expr::Literal(Literal::Bool(b))
     }
+}
+
+impl TypedExpr {
+    pub fn subst_var(mut self, var: &String, replacement: &String) -> TypedExpr {
+        self.subst_var_mut(var, replacement);
+        self
+    }
+
+    pub fn subst_var_mut(&mut self, var: &String, replacement: &String) {
+        match self {
+            Expr::Var(v) if var == &v.name => {
+                *self = Expr::Var(Var { name: replacement.clone(), ty: v.ty.clone() })
+            }
+            Expr::Ann { expr, .. } => {
+                expr.subst_var_mut(var, replacement);
+            }
+            Expr::Lambda { binder, body } if var != &binder.name => {
+                body.subst_var_mut(var, replacement);
+            }
+            Expr::Let { binder, expr, body } => {
+                expr.subst_var_mut(var, replacement);
+                if var != &binder.name {
+                    body.subst_var_mut(var, replacement);
+                }
+            }
+            Expr::App { func, arg } => {
+                func.subst_var_mut(&var, replacement);
+                arg.subst_var_mut(var, replacement);
+            }
+            _ => {}
+        }
+    }
+
 }

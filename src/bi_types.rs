@@ -658,6 +658,11 @@ impl NameGen {
         }
     }
 
+    pub fn fresh_ty_var(&mut self) -> String {
+        self.ty_gen = self.ty_gen + 1;
+        format!("{}u", self.ty_gen)
+    }
+
     pub fn fresh_var(&mut self) -> String {
         self.ty_gen = self.ty_gen + 1;
         format!("{}v", self.ty_gen)
@@ -679,7 +684,7 @@ impl TypeChecker {
     {
         let fresh_vars: Vec<(String, String)> = vars
             .iter()
-            .map(|v| (v.clone(), self.name_gen.fresh_var()))
+            .map(|v| (v.clone(), self.name_gen.fresh_ty_var()))
             .collect();
         let renamed_ty = {
             let mut tmp_ty = ty.clone();
@@ -799,8 +804,8 @@ impl TypeChecker {
             }
             Type::Fun { arg, result } => {
                 // InstLArr
-                let a2 = self.name_gen.fresh_var();
-                let a1 = self.name_gen.fresh_var();
+                let a2 = self.name_gen.fresh_ty_var();
+                let a1 = self.name_gen.fresh_ty_var();
                 let tmp_ctx = ctx.insert_at_ex(
                     ex,
                     vec![
@@ -865,8 +870,8 @@ impl TypeChecker {
             }
             Type::Fun { arg, result } => {
                 // InstRArr
-                let a1 = self.name_gen.fresh_var();
-                let a2 = self.name_gen.fresh_var();
+                let a1 = self.name_gen.fresh_ty_var();
+                let a2 = self.name_gen.fresh_ty_var();
                 let tmp_ctx = ctx.insert_at_ex(
                     ex,
                     vec![
@@ -934,14 +939,18 @@ impl TypeChecker {
             (Expr::Lambda { binder, body }, Type::Fun { arg, result }) => {
                 // ->l
                 let mut new_ctx = ctx;
-                let anno_elem = ContextElem::Anno(binder.clone(), *arg.clone());
-                new_ctx.push(anno_elem.clone());
-                let (mut res_ctx, body) = self.check(new_ctx, body, result)?;
+                let binder_fresh = self.name_gen.fresh_var();
+                let marker = ContextElem::Anno(binder_fresh.clone(), *arg.clone());
+                new_ctx.push(marker.clone());
+                let (mut res_ctx, typed_body) =
+                    self.check(new_ctx, &body.subst(binder, &Expr::Var(binder_fresh.clone())), result)?;
                 let ty_binder = res_ctx
-                    .find_var(binder)
+                    .find_var(&binder_fresh)
                     .expect("var disappeared in bi_types")
                     .clone();
-                res_ctx.drop_marker(anno_elem);
+                res_ctx.drop_marker(marker);
+                // Revert the renaming, so the expression contains the original names again
+                let typed_body = typed_body.subst_var(&binder_fresh, binder);
                 Ok((
                     res_ctx,
                     Expr::Lambda {
@@ -949,19 +958,21 @@ impl TypeChecker {
                             name: binder.clone(),
                             ty: ty_binder,
                         },
-                        body: Box::new(body),
+                        body: Box::new(typed_body),
                     },
                 ))
             }
             (Expr::Let { binder, expr, body }, ty) => {
                 let (ctx, ty_binder, typed_expr) = self.infer(ctx, expr)?;
                 let mut new_ctx = ctx;
-                let anno_elem = ContextElem::Anno(binder.clone(), ty_binder.clone());
-                new_ctx.push(anno_elem.clone());
+                let binder_fresh = self.name_gen.fresh_var();
+                let marker = ContextElem::Anno(binder_fresh.clone(), ty_binder.clone());
+                new_ctx.push(marker.clone());
                 let (mut res_ctx, typed_body) =
-                    self.check(new_ctx, &body, ty)?;
+                    self.check(new_ctx, &body.subst(binder, &Expr::Var(binder_fresh.clone())), ty)?;
                 let ty_binder = res_ctx.apply(&ty_binder);
-                res_ctx.drop_marker(anno_elem);
+                res_ctx.drop_marker(marker);
+                let typed_body = typed_body.subst_var(&binder_fresh, binder);
                 Ok((
                     res_ctx,
                     Expr::Let {
@@ -1032,6 +1043,8 @@ impl TypeChecker {
                 // Anno
                 if ctx.wf_type(ty) {
                     let (new_ctx, typed_expr) = self.check(ctx, expr, ty)?;
+                    info!("{:#?}", new_ctx);
+                    let typed_expr = new_ctx.apply_expr(typed_expr);
                     Ok((new_ctx, ty.clone(), typed_expr))
                 } else {
                     Err(TypeError::InvalidAnnotation(ty.clone()))
@@ -1064,8 +1077,8 @@ impl TypeChecker {
                 // ->l=>
                 let mut tmp_ctx = ctx;
                 let binder_fresh = self.name_gen.fresh_var();
-                let a = self.name_gen.fresh_var();
-                let b = self.name_gen.fresh_var();
+                let a = self.name_gen.fresh_ty_var();
+                let b = self.name_gen.fresh_ty_var();
                 let marker = ContextElem::Anno(binder_fresh.clone(), Type::Existential(a.clone()));
                 tmp_ctx.push_elems(vec![
                     ContextElem::ExVar(a.clone()),
@@ -1131,8 +1144,8 @@ impl TypeChecker {
             }
             Type::Existential(ex) => {
                 // alpha^app
-                let a1 = self.name_gen.fresh_var();
-                let a2 = self.name_gen.fresh_var();
+                let a1 = self.name_gen.fresh_ty_var();
+                let a2 = self.name_gen.fresh_ty_var();
                 let new_ctx = ctx.insert_at_ex(
                     ex,
                     vec![
