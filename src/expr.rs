@@ -166,20 +166,19 @@ impl<B> Expr<B> {
                             .append(Doc::text("="))
                             .group()
                             .append(Doc::space())
-                            .append(expr.to_doc())
+                            .append(
+                                expr.to_doc()
+                                    .append(Doc::space())
+                                    .append(Doc::text("in"))
+                                    .group(),
+                            )
                             .nest(2)
                             .group(),
                     )
-                    .group()
                     .nest(2)
+                    .group()
                     .append(Doc::space())
-                    .append(
-                        Doc::text("in")
-                            .append(Doc::space())
-                            .append(body.to_doc_inner(0))
-                            .nest(2),
-                    )
-                    .group();
+                    .append(body.to_doc_inner(0));
                 if depth > 0 {
                     Doc::text("(").append(inner).append(Doc::text(")")).group()
                 } else {
