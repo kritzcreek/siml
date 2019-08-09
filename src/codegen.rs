@@ -138,7 +138,8 @@ impl Codegen {
     }
 
     fn fun(&mut self, name: &str, expr: &TypedExpr, ty: &Type) {
-        info!("[gen fun] {} {}\n{}", name, ty, expr);
+        info!("{} : {} =\n{}", name, ty, expr);
+        // TODO Got to handle duplicate binders here (or somewhere earlier)
         let (binders, body) = expr.collapse_lambdas();
         let (body, let_binders) = self.let_lift(body.clone());
         let mut args = ty.unfold_fun();

@@ -4,10 +4,21 @@ let add : Int -> Int -> Int =
 let const : forall a b. a -> b -> a =
   \a. \b. a;
 
+let wrong_const : forall a b. a -> b -> b =
+  \a. \a. a;
+
 let twice : forall a. (a -> a) -> a -> a =
   \f. \x. f (f x);
 
+let run_st : forall a. (forall h. h -> a) -> a =
+  \f. f 1;
+
+let nested_let : Int =
+  let x = 4 in
+  let x = twice in
+  let x = add 10 (x (add 1) 1) in x;
+
 let main : Int =
-  let const10 = const 10 in
-  let x = twice (add 10) 8 in
+  let const10 = (const 10 : forall a. a -> Int) in
+  let x = twice (add 10) (run_st const10) in
   add x (let x = 5 in x);

@@ -1043,7 +1043,6 @@ impl TypeChecker {
                 // Anno
                 if ctx.wf_type(ty) {
                     let (new_ctx, typed_expr) = self.check(ctx, expr, ty)?;
-                    info!("{:#?}", new_ctx);
                     let typed_expr = new_ctx.apply_expr(typed_expr);
                     Ok((new_ctx, ty.clone(), typed_expr))
                 } else {

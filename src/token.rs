@@ -67,6 +67,7 @@ fn is_ident_member(c: &char) -> bool {
     match c {
         'a'...'z' => true,
         '0'...'9' => true,
+        '_' => true,
         _ => false,
     }
 }

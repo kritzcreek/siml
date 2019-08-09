@@ -11,7 +11,7 @@ pub fn test_wasm(prog: Vec<(Declaration<Var>, Type)>) {
 
     let contents = Codegen::new().codegen(&prog);
 
-    info!("[wasm] {}", contents);
+    // info!("[wasm] {}", contents);
 
     // Parse WAT (WebAssembly Text format) into wasm bytecode.
     let wasm_binary: Vec<u8> = match wabt::wat2wasm(contents) {

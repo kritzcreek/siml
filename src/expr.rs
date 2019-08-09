@@ -321,7 +321,10 @@ impl TypedExpr {
     pub fn subst_var_mut(&mut self, var: &String, replacement: &String) {
         match self {
             Expr::Var(v) if var == &v.name => {
-                *self = Expr::Var(Var { name: replacement.clone(), ty: v.ty.clone() })
+                *self = Expr::Var(Var {
+                    name: replacement.clone(),
+                    ty: v.ty.clone(),
+                })
             }
             Expr::Ann { expr, .. } => {
                 expr.subst_var_mut(var, replacement);
@@ -342,5 +345,4 @@ impl TypedExpr {
             _ => {}
         }
     }
-
 }
