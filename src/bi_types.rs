@@ -1056,10 +1056,12 @@ impl TypeChecker {
                 let mut tmp_ctx = ctx;
                 let marker = ContextElem::Anno(binder_fresh.clone(), ty_binder.clone());
                 tmp_ctx.push(marker.clone());
+                let body = body.subst(binder, &Expr::Var(binder_fresh.clone()));
                 let (mut res_ctx, ty_body, typed_body) =
-                    self.infer(tmp_ctx, &body.subst(binder, &Expr::Var(binder_fresh)))?;
+                    self.infer(tmp_ctx, &body)?;
                 let ty_binder = res_ctx.apply(&ty_binder);
                 res_ctx.drop_marker(marker);
+                let typed_body = typed_body.subst_var(&binder_fresh, binder);
                 Ok((
                     res_ctx,
                     ty_body,
