@@ -260,13 +260,17 @@ mod tests {
     use super::*;
     use crate::grammar::ExprParser;
     use crate::token::Lexer;
+    use std::iter::FromIterator;
 
-    fn expr(input: &str) -> Expr {
+    fn expr(input: &str) -> TypedExpr {
         let lexer = Lexer::new(input);
         let res = ExprParser::new().parse(lexer);
         match res {
             Err(err) => panic!("{:?}", err),
-            Ok(ty) => ty,
+            Ok(expr) => expr.map(&|v| Var {
+                name: v,
+                ty: Type::int(),
+            }),
         }
     }
 
@@ -276,8 +280,10 @@ mod tests {
 
         let mut cg = Codegen::new();
         let (lifted, names) = cg.let_lift(my_expr);
-        println!("{}", lifted);
-        println!("{:#?}", names);
-        assert!(false)
+        assert_eq!(lifted, expr("let hello = x in (let hello1 = x in hello1)"));
+        assert_eq!(
+            names,
+            HashSet::from_iter(vec!["hello1".to_string(), "hello".to_string()].into_iter())
+        );
     }
 }

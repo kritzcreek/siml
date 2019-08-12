@@ -942,8 +942,11 @@ impl TypeChecker {
                 let binder_fresh = self.name_gen.fresh_var();
                 let marker = ContextElem::Anno(binder_fresh.clone(), *arg.clone());
                 new_ctx.push(marker.clone());
-                let (mut res_ctx, typed_body) =
-                    self.check(new_ctx, &body.subst(binder, &Expr::Var(binder_fresh.clone())), result)?;
+                let (mut res_ctx, typed_body) = self.check(
+                    new_ctx,
+                    &body.subst(binder, &Expr::Var(binder_fresh.clone())),
+                    result,
+                )?;
                 let ty_binder = res_ctx
                     .find_var(&binder_fresh)
                     .expect("var disappeared in bi_types")
@@ -968,8 +971,11 @@ impl TypeChecker {
                 let binder_fresh = self.name_gen.fresh_var();
                 let marker = ContextElem::Anno(binder_fresh.clone(), ty_binder.clone());
                 new_ctx.push(marker.clone());
-                let (mut res_ctx, typed_body) =
-                    self.check(new_ctx, &body.subst(binder, &Expr::Var(binder_fresh.clone())), ty)?;
+                let (mut res_ctx, typed_body) = self.check(
+                    new_ctx,
+                    &body.subst(binder, &Expr::Var(binder_fresh.clone())),
+                    ty,
+                )?;
                 let ty_binder = res_ctx.apply(&ty_binder);
                 res_ctx.drop_marker(marker);
                 let typed_body = typed_body.subst_var(&binder_fresh, binder);
@@ -1056,8 +1062,7 @@ impl TypeChecker {
                 let marker = ContextElem::Anno(binder_fresh.clone(), ty_binder.clone());
                 tmp_ctx.push(marker.clone());
                 let body = body.subst(binder, &Expr::Var(binder_fresh.clone()));
-                let (mut res_ctx, ty_body, typed_body) =
-                    self.infer(tmp_ctx, &body)?;
+                let (mut res_ctx, ty_body, typed_body) = self.infer(tmp_ctx, &body)?;
                 let ty_binder = res_ctx.apply(&ty_binder);
                 res_ctx.drop_marker(marker);
                 let typed_body = typed_body.subst_var(&binder_fresh, binder);

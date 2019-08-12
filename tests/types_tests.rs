@@ -2,7 +2,7 @@ use pretty_assertions::assert_eq;
 use siml::expr::Expr;
 use siml::grammar::{ExprParser, TypeParser};
 use siml::token::Lexer;
-use siml::types::{Scheme, Substitution, Type, TypeChecker};
+use siml::types::{Scheme, Environment, Type, TypeChecker};
 
 fn ty(input: &str) -> Type {
     let lexer = Lexer::new(input);
@@ -22,12 +22,12 @@ fn expr(input: &str) -> Expr<String> {
     }
 }
 
-fn test_ty_eq_subst(ty1: Type, ty2: Type, subst: Substitution) {
-    assert_eq!(ty1.generalize(&subst), ty2.generalize(&subst))
+fn test_ty_eq_subst(ty1: Type, ty2: Type, env: Environment) {
+    assert_eq!(ty1.generalize(&env), ty2.generalize(&env))
 }
 
 fn test_ty_eq(ty1: Type, ty2: Type) {
-    test_ty_eq_subst(ty1, ty2, Substitution::new())
+    test_ty_eq_subst(ty1, ty2, Environment::new())
 }
 
 fn test_infer(expr: Expr<String>, ty: Type) {
@@ -44,7 +44,7 @@ fn it_infers_int_literals() {
 #[test]
 fn it_generalizes() {
     assert_eq!(
-        ty("a -> b").generalize(&Substitution::new()),
+        ty("a -> b").generalize(&Environment::new()),
         Scheme {
             vars: vec!["gen0".to_string(), "gen1".to_string()],
             ty: ty("gen0 -> gen1")
@@ -53,9 +53,9 @@ fn it_generalizes() {
 }
 
 #[test]
-fn it_generalizes_while_ignoring_vars_in_the_subst() {
+fn it_generalizes_while_ignoring_vars_in_the_env() {
     assert_eq!(
-        ty("a -> b").generalize(&Substitution::singleton("u1".to_string(), ty("a"))),
+        ty("a -> b").generalize(&Environment::new().insert_mono("u1".to_string(), ty("a"))),
         Scheme {
             vars: vec!["gen0".to_string()],
             ty: ty("a -> gen0")
@@ -70,7 +70,7 @@ fn it_figures_out_test_equality() {
     test_ty_eq_subst(
         ty("a -> b"),
         ty("a -> c"),
-        Substitution::singleton("a".to_string(), ty("Int")),
+        Environment::new().insert_mono("a".to_string(), ty("Int")),
     );
 }
 

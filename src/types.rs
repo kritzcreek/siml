@@ -1,5 +1,6 @@
+/// An implementation of AlgorithmW
 use crate::bi_types;
-use crate::expr::{Expr, Literal};
+use crate::expr::{Expr, Literal, ParserExpr};
 use crate::pretty::parens_if;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -34,6 +35,14 @@ impl Scheme {
         } else {
             format!("forall {}. {}", self.vars.join(" "), self.ty.print())
         }
+    }
+
+    pub fn free_vars(&self) -> HashSet<String> {
+        let mut res = self.ty.free_vars();
+        for var in &self.vars {
+            res.remove(var);
+        }
+        res
     }
 }
 
@@ -99,12 +108,12 @@ impl Type {
         HashSet::from_iter(self.free_vars_ordered().into_iter())
     }
 
-    pub fn generalize(&self, substitution: &Substitution) -> Scheme {
-        let subst_free = substitution.free_vars();
+    pub fn generalize(&self, env: &Environment) -> Scheme {
+        let env_free = env.free_vars();
         let free_vars: Vec<String> = self
             .free_vars_ordered()
             .into_iter()
-            .filter(|x| !subst_free.contains(x))
+            .filter(|x| !env_free.contains(x))
             .collect();
 
         let new_vars: Vec<String> = (0..free_vars.len()).map(|v| format!("gen{}", v)).collect();
@@ -115,7 +124,7 @@ impl Type {
             .collect();
 
         Scheme {
-            vars: new_vars.to_vec(),
+            vars: new_vars,
             ty: subst.apply(self.clone()),
         }
     }
@@ -143,7 +152,36 @@ impl TypeError {
     }
 }
 
-type Environment = HashMap<String, Scheme>;
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Environment(pub HashMap<String, Scheme>);
+
+impl Environment {
+    pub fn new() -> Environment {
+        Environment(HashMap::new())
+    }
+
+    pub fn insert(&self, var: String, scheme: Scheme) -> Environment {
+        let mut res = self.0.clone();
+        res.insert(var, scheme);
+        Environment(res)
+    }
+
+    pub fn insert_mono(&self, var: String, ty: Type) -> Environment {
+        self.insert(var, Scheme { vars: vec![], ty })
+    }
+
+    pub fn get(&self, var: &String) -> Option<&Scheme> {
+        self.0.get(var)
+    }
+
+    pub fn free_vars(&self) -> HashSet<String> {
+        let mut res = HashSet::new();
+        for (_, scheme) in &self.0 {
+            res.extend(scheme.free_vars())
+        }
+        res
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Substitution(pub HashMap<String, Type>);
@@ -203,7 +241,7 @@ impl Substitution {
 
     fn apply_env(&self, env: &Environment) -> Environment {
         let mut new_env = env.clone();
-        for scheme in new_env.values_mut() {
+        for scheme in new_env.0.values_mut() {
             *scheme = self.apply_scheme(scheme.clone());
         }
         new_env
@@ -311,19 +349,15 @@ impl TypeChecker {
         }
     }
 
-    pub fn infer_expr(&mut self, expr: &Expr<String>) -> Result<Type, Vec<TypeError>> {
-        let mut init_env = HashMap::new();
-        init_env.insert(
+    pub fn infer_expr(&mut self, expr: &ParserExpr) -> Result<Type, Vec<TypeError>> {
+        let init_env = Environment::new().insert_mono(
             "add".to_string(),
-            Scheme {
-                vars: vec![],
-                ty: Type::Fun {
+            Type::Fun {
+                arg: Box::new(Type::Int),
+                result: Box::new(Type::Fun {
                     arg: Box::new(Type::Int),
-                    result: Box::new(Type::Fun {
-                        arg: Box::new(Type::Int),
-                        result: Box::new(Type::Int),
-                    }),
-                },
+                    result: Box::new(Type::Int),
+                }),
             },
         );
         let (ty, _) = self.infer(&init_env, expr);
@@ -334,7 +368,7 @@ impl TypeChecker {
         }
     }
 
-    pub fn infer(&mut self, env: &Environment, expr: &Expr<String>) -> (Type, Substitution) {
+    pub fn infer(&mut self, env: &Environment, expr: &ParserExpr) -> (Type, Substitution) {
         match expr {
             Expr::Var(x) => match env.get(x) {
                 None => {
@@ -345,14 +379,7 @@ impl TypeChecker {
             },
             Expr::Lambda { binder, body } => {
                 let ty_binder = self.fresh_var();
-                let mut tmp_env = env.clone();
-                tmp_env.insert(
-                    binder.to_string(),
-                    Scheme {
-                        vars: vec![],
-                        ty: ty_binder.clone(),
-                    },
-                );
+                let tmp_env = env.insert_mono(binder.to_string(), ty_binder.clone());
                 let (ty_body, s) = self.infer(&tmp_env, body);
                 if ty_body.is_error() {
                     return TypeChecker::error_sentinel();
@@ -367,14 +394,7 @@ impl TypeChecker {
             }
             Expr::Let { binder, expr, body } => {
                 let (ty_binder, s1) = self.infer(env, expr);
-                let mut tmp_env = env.clone();
-                tmp_env.insert(
-                    binder.to_string(),
-                    Scheme {
-                        vars: vec![],
-                        ty: ty_binder.clone(),
-                    },
-                );
+                let tmp_env = env.insert(binder.to_string(), ty_binder.generalize(env));
                 let (ty_body, s2) = self.infer(&tmp_env, body);
                 if ty_binder.is_error() || ty_body.is_error() {
                     TypeChecker::error_sentinel()
