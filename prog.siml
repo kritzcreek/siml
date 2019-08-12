@@ -5,7 +5,7 @@ let const : forall a b. a -> b -> a =
   \a. \b. a;
 
 let wrong_const : forall a b. a -> b -> b =
-  \a. \a. a;
+  \a. \b. b;
 
 let twice : forall a. (a -> a) -> a -> a =
   \f. \x. f (f x);
