@@ -1,13 +1,13 @@
 let add : Int -> Int -> Int =
   \x. \y. primadd;
 
-let tuple : forall a b. a -> b -> Int =
+let tuple : forall a b. a -> b -> (a, b) =
   \x. \y. primtuple;
 
-let fst : forall a. Int -> a =
+let fst : forall a b. (a, b) -> a =
   \x. primfst;
 
-let snd : forall a. Int -> a =
+let snd : forall a b. (a, b) -> b =
   \x. primsnd;
 
 let const : forall a b. a -> b -> a =
@@ -32,7 +32,9 @@ let main : Int =
   let x = twice (add 10) (run_st const10) in
   add x (let x = 5 in x);
 
-let tupletest : Int =
-  let t1 = tuple 1 in
-  let t = t1 true in
-  fst t;
+let swap : forall a b. (a, b) -> (b, a) =
+  \t. (snd t, fst t);
+
+let tuple_test : Int =
+  fst (swap (swap (42, true)));
+

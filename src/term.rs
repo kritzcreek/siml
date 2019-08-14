@@ -82,6 +82,11 @@ impl Term {
             Expr::Var(s) => Term::Var(s.ident()),
             Expr::Literal(lit) => Term::Literal(lit.clone()),
             Expr::Ann { expr, ty: _ } => Term::from_expr(expr),
+            Expr::Tuple(fst, snd) => Term::Pack {
+                tag: 1,
+                arity: 2,
+                values: vec![Term::from_expr(fst), Term::from_expr(snd)],
+            },
         }
     }
 
@@ -165,7 +170,18 @@ impl Term {
                 }
                 t => Err(EvalError::ApplyingNonLambda(t)),
             },
-            Term::Pack { .. } => Ok(term),
+            Term::Pack { tag, arity, values } => {
+                let mut evaled_values = vec![];
+                for t in values {
+                    let evaled_t = Term::eval(env, t.clone())?;
+                    evaled_values.push(evaled_t);
+                }
+                Ok(Term::Pack {
+                    tag,
+                    arity,
+                    values: evaled_values,
+                })
+            }
         }
     }
 

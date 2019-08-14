@@ -23,7 +23,7 @@ fn print_ty_res(ty_res: Result<types::Type, Vec<types::TypeError>>) -> String {
 fn print_bi_ty_res(ty_res: Result<bi_types::Type, bi_types::TypeError>) -> String {
     match ty_res {
         Err(err) => err.print(),
-        Ok(ty) => ty.print(),
+        Ok(ty) => format!("{}", ty),
     }
 }
 

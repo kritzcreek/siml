@@ -89,6 +89,7 @@ pub enum Expr<B> {
     },
     Var(B),
     Literal(Literal),
+    Tuple(Box<Expr<B>>, Box<Expr<B>>),
     Ann {
         expr: Box<Expr<B>>,
         ty: Type,
@@ -129,6 +130,7 @@ impl<B> Expr<B> {
                 expr: Box::new(expr.map(f)),
             },
             Expr::Literal(lit) => Expr::Literal(lit),
+            Expr::Tuple(fst, snd) => Expr::Tuple(Box::new(fst.map(f)), Box::new(snd.map(f))),
         }
     }
 
@@ -206,6 +208,13 @@ impl<B> Expr<B> {
                 )
                 .append(Doc::text(")"))
                 .group(),
+            Expr::Tuple(fst, snd) => Doc::text("(")
+                .append(fst.to_doc())
+                .append(Doc::text(","))
+                .append(Doc::space())
+                .append(snd.to_doc())
+                .append(Doc::text(")"))
+                .group(),
         }
     }
 
@@ -233,14 +242,18 @@ impl<B> Expr<B> {
                 body.subst_mut(var, replacement);
             }
             Expr::Let { binder, expr, body } => {
-                expr.subst_mut(&var, replacement);
+                expr.subst_mut(var, replacement);
                 if var != &binder.ident() {
                     body.subst_mut(var, replacement);
                 }
             }
             Expr::App { func, arg } => {
-                func.subst_mut(&var, replacement);
+                func.subst_mut(var, replacement);
                 arg.subst_mut(var, replacement);
+            }
+            Expr::Tuple(fst, snd) => {
+                fst.subst_mut(var, replacement);
+                snd.subst_mut(var, replacement);
             }
             _ => {}
         }
@@ -298,6 +311,7 @@ impl<B> Expr<B> {
                 res
             }
             Expr::App { func, arg } => func.free_vars().union(&arg.free_vars()).cloned().collect(),
+            Expr::Tuple(fst, snd) => fst.free_vars().union(&snd.free_vars()).cloned().collect(),
             Expr::Literal(_) => HashSet::new(),
             Expr::Ann { expr, ty: _ } => expr.free_vars(),
         }
@@ -309,6 +323,10 @@ impl<B> Expr<B> {
 
     pub fn bool(b: bool) -> Self {
         Expr::Literal(Literal::Bool(b))
+    }
+
+    pub fn tuple(fst: Expr<B>, snd: Expr<B>) -> Self {
+        Expr::Tuple(Box::new(fst), Box::new(snd))
     }
 }
 
@@ -341,6 +359,10 @@ impl TypedExpr {
             Expr::App { func, arg } => {
                 func.subst_var_mut(&var, replacement);
                 arg.subst_var_mut(var, replacement);
+            }
+            Expr::Tuple(fst, snd) => {
+                fst.subst_var_mut(&var, replacement);
+                snd.subst_var_mut(var, replacement);
             }
             _ => {}
         }

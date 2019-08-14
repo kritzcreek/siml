@@ -13,6 +13,7 @@ pub enum Type {
     Bool,
     Var(String),
     Fun { arg: Box<Type>, result: Box<Type> },
+    Tuple(Box<Type>, Box<Type>),
     Error,
 }
 
@@ -54,6 +55,10 @@ impl Type {
                 arg: Box::new(Type::from_bi_type(*arg)),
                 result: Box::new(Type::from_bi_type(*result)),
             },
+            bi_types::Type::Tuple(fst, snd) => Type::Tuple(
+                Box::new(Type::from_bi_type(*fst)),
+                Box::new(Type::from_bi_type(*snd)),
+            ),
             ref ty if *ty == bi_types::Type::int() => Type::Int,
             ref ty if *ty == bi_types::Type::boolean() => Type::Bool,
             t => {
@@ -88,6 +93,7 @@ impl Type {
                     result.print_inner(0)
                 ),
             ),
+            Type::Tuple(fst, snd) => format!("({}, {})", fst.print(), snd.print()),
         }
     }
 
@@ -98,6 +104,10 @@ impl Type {
             Type::Fun { arg, result } => {
                 res.append(&mut arg.free_vars_ordered());
                 res.append(&mut result.free_vars_ordered());
+            }
+            Type::Tuple(fst, snd) => {
+                res.append(&mut fst.free_vars_ordered());
+                res.append(&mut snd.free_vars_ordered());
             }
             _ => {}
         }
@@ -342,6 +352,15 @@ impl TypeChecker {
                     .unify(s1.apply(*result1), s1.apply(*result2))
                     .map(|s2| s1.compose(s2)),
             },
+            (Type::Tuple(fst1, snd1), Type::Tuple(fst2, snd2)) => match self.unify(*fst1, *fst2) {
+                None => {
+                    self.unify(*snd1, *snd2);
+                    None
+                }
+                Some(s1) => self
+                    .unify(s1.apply(*snd1), s1.apply(*snd2))
+                    .map(|s2| s1.compose(s2)),
+            },
             (t1, t2) => {
                 self.report_error(TypeError::Unification(t1, t2));
                 None
@@ -438,6 +457,16 @@ impl TypeChecker {
                         TypeChecker::error_sentinel()
                     }
                 }
+            }
+            Expr::Tuple(fst, snd) => {
+                let (ty_fst, s1) = self.infer(env, fst);
+                let (ty_snd, s2) = self.infer(env, snd);
+                if ty_fst.is_error() || ty_snd.is_error() {
+                    return TypeChecker::error_sentinel();
+                }
+                let ty_fst = s2.apply(ty_fst);
+                let s = s2.compose(s1);
+                (Type::Tuple(Box::new(ty_fst), Box::new(ty_snd)), s)
             }
             Expr::Literal(Literal::Int(_)) => (Type::Int, Substitution::new()),
             Expr::Literal(Literal::Bool(_)) => (Type::Bool, Substitution::new()),

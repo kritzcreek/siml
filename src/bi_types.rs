@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::expr::{Declaration, Expr, Literal, ParserExpr, TypedExpr, Var};
-use crate::pretty::{parens_if, render_doc};
+use crate::pretty::render_doc;
 use pretty::{BoxDoc, Doc};
 use std::collections::HashSet;
 use std::fmt;
@@ -13,6 +13,7 @@ pub enum Type {
     Existential(String),
     Poly { vars: Vec<String>, ty: Box<Type> },
     Fun { arg: Box<Type>, result: Box<Type> },
+    Tuple(Box<Type>, Box<Type>),
 }
 
 impl fmt::Display for Type {
@@ -22,37 +23,12 @@ impl fmt::Display for Type {
 }
 
 impl Type {
-    pub fn print(&self) -> String {
-        self.print_inner(0)
-    }
-
-    fn print_inner(&self, depth: u32) -> String {
-        match self {
-            Type::Constructor(con) => con.to_string(),
-            Type::Var(s) => s.clone(),
-            Type::Existential(e) => format!("{{{}}}", e.clone()),
-            Type::Poly { vars, ty } => {
-                let vars_printed: String = vars
-                    .iter()
-                    .fold("".to_string(), |acc, var| format!("{} {}", acc, var));
-                format!("∀{}. {}", vars_printed, ty)
-            }
-            Type::Fun { arg, result } => parens_if(
-                depth > 0,
-                format!(
-                    "{} -> {}",
-                    arg.print_inner(depth + 1),
-                    result.print_inner(0)
-                ),
-            ),
-        }
-    }
-
     pub fn is_mono(&self) -> bool {
         match self {
             Type::Var(_) | Type::Existential(_) | Type::Constructor(_) => true,
             Type::Poly { .. } => false,
             Type::Fun { arg, result } => arg.is_mono() && result.is_mono(),
+            Type::Tuple(fst, snd) => fst.is_mono() && snd.is_mono(),
         }
     }
 
@@ -77,6 +53,10 @@ impl Type {
                 res.extend(free_in_ty);
             }
             Type::Constructor(_) => {}
+            Type::Tuple(fst, snd) => {
+                res.extend(fst.free_vars());
+                res.extend(snd.free_vars());
+            }
         }
         res
     }
@@ -122,6 +102,10 @@ impl Type {
                 arg: Box::new(arg.subst(var, replacement)),
                 result: Box::new(result.subst(var, replacement)),
             },
+            Type::Tuple(fst, snd) => Type::Tuple(
+                Box::new(fst.subst(var, replacement)),
+                Box::new(snd.subst(var, replacement)),
+            ),
         }
     }
     pub fn subst_mut(&mut self, var: &String, replacement: &Type) {
@@ -140,6 +124,10 @@ impl Type {
             Type::Fun { arg, result } => {
                 arg.subst_mut(var, replacement);
                 result.subst_mut(var, replacement);
+            }
+            Type::Tuple(fst, snd) => {
+                fst.subst_mut(var, replacement);
+                snd.subst_mut(var, replacement);
             }
         }
     }
@@ -174,6 +162,10 @@ impl Type {
             vars: vars.into_iter().map(|s| s.to_string()).collect(),
             ty: Box::new(ty),
         }
+    }
+
+    fn tuple(fst: Type, snd: Type) -> Self {
+        Type::Tuple(Box::new(fst), Box::new(snd))
     }
 }
 
@@ -220,6 +212,13 @@ impl Type {
                     inner
                 }
             }
+            Type::Tuple(fst, snd) => Doc::text("(")
+                .append(fst.to_doc())
+                .append(Doc::text(","))
+                .append(Doc::space())
+                .append(snd.to_doc())
+                .append(Doc::text(")"))
+                .group(),
         }
     }
 }
@@ -391,10 +390,6 @@ impl Context {
         self.elem(&ContextElem::Universal(var.clone()))
     }
 
-    fn arrow_wf(&self, a: &Type, b: &Type) -> bool {
-        self.wf_type(a) && self.wf_type(b)
-    }
-
     fn forall_wf(&self, vars: &Vec<String>, ty: &Type) -> bool {
         let mut tmp_elems = self.elems.clone();
         tmp_elems.extend(vars.iter().map(|v| ContextElem::Universal(v.clone())));
@@ -420,9 +415,10 @@ impl Context {
         match ty {
             Type::Constructor(_) => true,
             Type::Poly { vars, ty } => self.forall_wf(vars, ty),
-            Type::Fun { arg, result } => self.arrow_wf(arg, result),
+            Type::Fun { arg, result } => self.wf_type(arg) && self.wf_type(result),
             Type::Var(var) => self.u_var_wf(var),
             Type::Existential(var) => self.evar_wf(var) || self.solved_evar_wf(var),
+            Type::Tuple(fst, snd) => self.wf_type(fst) && self.wf_type(snd),
         }
     }
 
@@ -468,6 +464,9 @@ impl Context {
                 vars: vars.clone(),
                 ty: Box::new(self.apply(ty)),
             },
+            Type::Tuple(fst, snd) => {
+                Type::Tuple(Box::new(self.apply(fst)), Box::new(self.apply(snd)))
+            }
         }
     }
 
@@ -486,6 +485,9 @@ impl Context {
                 vars: vars.clone(),
                 ty: Box::new(self.apply_(*ty)),
             },
+            Type::Tuple(fst, snd) => {
+                Type::Tuple(Box::new(self.apply_(*fst)), Box::new(self.apply_(*snd)))
+            }
         }
     }
 
@@ -634,6 +636,12 @@ impl TypeChecker {
                 let res1 = tmp_ctx.apply(result1);
                 let res2 = tmp_ctx.apply(result2);
                 self.subtype(tmp_ctx, &res1, &res2)
+            }
+            (Type::Tuple(fst1, snd1), Type::Tuple(fst2, snd2)) => {
+                let tmp_ctx = self.subtype(ctx, fst1, fst2)?;
+                let snd1 = tmp_ctx.apply(snd1);
+                let snd2 = tmp_ctx.apply(snd2);
+                self.subtype(tmp_ctx, &snd1, &snd2)
             }
             (ty1, Type::Poly { vars, ty: ty2 }) => {
                 let (renamed_ty, fresh_vars) = self.rename_poly(vars, ty2, |v| Type::Var(v));
@@ -1014,6 +1022,15 @@ impl TypeChecker {
                     },
                 ))
             }
+            Expr::Tuple(fst, snd) => {
+                let (ctx, fst_ty, typed_fst) = self.infer(ctx, fst)?;
+                let (ctx, snd_ty, typed_snd) = self.infer(ctx, snd)?;
+                Ok((
+                    ctx,
+                    Type::tuple(fst_ty, snd_ty),
+                    Expr::tuple(typed_fst, typed_snd),
+                ))
+            }
         }
     }
 
@@ -1084,7 +1101,22 @@ impl TypeChecker {
         &mut self,
         prog: &Vec<Declaration<String>>,
     ) -> Result<Vec<(Declaration<Var>, Type)>, TypeError> {
-        let mut ctx = Context::new(vec![ContextElem::Anno("primadd".to_string(), Type::int())]);
+        let mk_prim = |name: &str| {
+            ContextElem::Anno(
+                name.to_string(),
+                Type::Poly {
+                    vars: vec!["a".to_string()],
+                    ty: Box::new(Type::var("a")),
+                },
+            )
+        };
+
+        let mut ctx = Context::new(vec![
+            mk_prim("primadd"),
+            mk_prim("primtuple"),
+            mk_prim("primfst"),
+            mk_prim("primsnd"),
+        ]);
         let mut result = vec![];
 
         for Declaration::Value { name, expr } in prog {

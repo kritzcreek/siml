@@ -62,6 +62,7 @@ ExprAtom: ParserExpr = {
     "int_literal" => Expr::Literal(Literal::Int(<>)),
     "bool_literal" => Expr::Literal(Literal::Bool(<>)),
     "(" <e:Expr> ":" <t:BiType> ")" => Expr::Ann{ ty: t, expr: Box::new(e) },
+    "(" <fst:Expr> "," <snd:Expr> ")" => Expr::Tuple(Box::new(fst), Box::new(snd)),
     "(" <e:Expr> ")" => e,
 };
 
@@ -83,6 +84,7 @@ pub BiType: bi_types::Type = {
 
 TypeAtom: bi_types::Type = {
     "(" <t:BiType> ")" => t,
+    "(" <fst:BiType> "," <snd:BiType> ")" => bi_types::Type::Tuple(Box::new(fst), Box::new(snd)),
     <i:"identifier"> => {
       if i.chars().next().unwrap().is_lowercase() {
           bi_types::Type::Var(i)

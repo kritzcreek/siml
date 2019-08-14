@@ -118,6 +118,10 @@ impl Eval {
                 expr: Box::new(self.substitute(expr, scrutinee, replacement)),
             },
             Expr::Literal(_) => expr.clone(),
+            Expr::Tuple(fst, snd) => Expr::tuple(
+                self.substitute(fst, scrutinee, replacement),
+                self.substitute(snd, scrutinee, replacement),
+            ),
         }
     }
 }
