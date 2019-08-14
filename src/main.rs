@@ -10,6 +10,7 @@ use std::fs;
 use std::sync::mpsc::channel;
 use std::thread;
 use std::time::Duration;
+use notify::DebouncedEvent;
 
 fn setup_logger() {
     let colors = ColoredLevelConfig::new()
@@ -35,14 +36,23 @@ fn watch_file() -> notify::Result<()> {
     watcher.watch("prog.siml", RecursiveMode::Recursive)?;
     loop {
         match rx.recv() {
-            Ok(_) => run_file(),
+            Ok(DebouncedEvent::Write(_)) => {
+                run_file()
+            },
+            Ok(DebouncedEvent::Create(_)) => {
+                run_file()
+            }
+            Ok(_ev) => {
+                // Uncomment if you want to debug watcher failures
+                // println!("{:?}", _ev)
+            }
             Err(e) => println!("watch error: {:?}", e),
         }
     }
 }
 
 fn run_file() {
-    let source_file = fs::read_to_string("./prog.siml").expect("Failed to read the source file.");
+    let source_file = fs::read_to_string("prog.siml").expect("Failed to read the source file.");
     repl::run_program(&source_file)
 }
 
