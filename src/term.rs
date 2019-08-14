@@ -1,4 +1,4 @@
-use crate::expr::{Expr, HasIdent, Literal};
+use crate::expr::{Expr, HasIdent, Literal, Declaration};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -76,6 +76,16 @@ impl Term {
     pub fn eval_expr<B: HasIdent>(expr: &Expr<B>) -> Result<Term, EvalError>
     {
         Term::eval(&initial_env(), Term::from_expr(expr))
+    }
+
+    pub fn eval_prog<B: HasIdent>(prog: Vec<Declaration<B>>) -> Result<Term, EvalError> {
+        let mut env = initial_env();
+        let mut res = Term::Var("nuttin".to_string());
+        for Declaration::Value{ name, expr } in prog {
+            res = Term::eval(&env, Term::from_expr(&expr))?;
+            env.insert(name, res.clone());
+        }
+        Ok(res)
     }
 
     fn eval(env: &Env, term: Term) -> Result<Term, EvalError> {
