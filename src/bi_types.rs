@@ -11,18 +11,8 @@ pub enum Type {
     Constructor(String),
     Var(String),
     Existential(String),
-    Poly {
-        vars: Vec<String>,
-        ty: Box<Type>,
-    },
-    Fun {
-        arg: Box<Type>,
-        result: Box<Type>,
-    },
-    App {
-        type_constructor: Box<Type>,
-        arguments: Vec<Type>,
-    },
+    Poly { vars: Vec<String>, ty: Box<Type> },
+    Fun { arg: Box<Type>, result: Box<Type> },
 }
 
 impl fmt::Display for Type {
@@ -55,18 +45,6 @@ impl Type {
                     result.print_inner(0)
                 ),
             ),
-            Type::App {
-                type_constructor,
-                arguments,
-            } => format!(
-                "{} {}",
-                type_constructor,
-                arguments
-                    .iter()
-                    .map(|ty| ty.print())
-                    .collect::<Vec<String>>()
-                    .join(" ")
-            ),
         }
     }
 
@@ -75,10 +53,6 @@ impl Type {
             Type::Var(_) | Type::Existential(_) | Type::Constructor(_) => true,
             Type::Poly { .. } => false,
             Type::Fun { arg, result } => arg.is_mono() && result.is_mono(),
-            Type::App {
-                type_constructor,
-                arguments,
-            } => type_constructor.is_mono() && arguments.iter().all(|ty| ty.is_mono()),
         }
     }
 
@@ -101,16 +75,6 @@ impl Type {
                     free_in_ty.remove(var);
                 });
                 res.extend(free_in_ty);
-            }
-            Type::App {
-                type_constructor,
-                arguments,
-            } => {
-                let mut free_in_cons = type_constructor.free_vars();
-                arguments.iter().for_each(|ty| {
-                    free_in_cons.extend(ty.free_vars());
-                });
-                res.extend(free_in_cons);
             }
             Type::Constructor(_) => {}
         }
@@ -158,16 +122,6 @@ impl Type {
                 arg: Box::new(arg.subst(var, replacement)),
                 result: Box::new(result.subst(var, replacement)),
             },
-            Type::App {
-                type_constructor,
-                arguments,
-            } => Type::App {
-                type_constructor: Box::new(type_constructor.subst(var, replacement)),
-                arguments: arguments
-                    .iter()
-                    .map(|ty| ty.subst(var, replacement))
-                    .collect(),
-            },
         }
     }
     pub fn subst_mut(&mut self, var: &String, replacement: &Type) {
@@ -186,15 +140,6 @@ impl Type {
             Type::Fun { arg, result } => {
                 arg.subst_mut(var, replacement);
                 result.subst_mut(var, replacement);
-            }
-            Type::App {
-                type_constructor,
-                arguments,
-            } => {
-                type_constructor.subst_mut(var, replacement);
-                for ty in arguments {
-                    ty.subst_mut(var, replacement)
-                }
             }
         }
     }
@@ -230,13 +175,6 @@ impl Type {
             ty: Box::new(ty),
         }
     }
-
-    fn app(con: Type, args: Vec<Type>) -> Self {
-        Type::App {
-            type_constructor: Box::new(con),
-            arguments: args,
-        }
-    }
 }
 
 // Pretty printing
@@ -249,16 +187,6 @@ impl Type {
             Type::Constructor(c) => Doc::text(c),
             Type::Existential(evar) => Doc::text(evar),
             Type::Var(v) => Doc::text(v),
-            Type::App {
-                type_constructor,
-                arguments,
-            } => type_constructor
-                .to_doc()
-                .append(Doc::space())
-                .append(Doc::intersperse(
-                    arguments.into_iter().map(|a| a.to_doc_inner(1)),
-                    Doc::space(),
-                )),
             Type::Poly { vars, ty } => {
                 let inner = Doc::text("∀ ")
                     .append(Doc::intersperse(
@@ -495,10 +423,6 @@ impl Context {
             Type::Fun { arg, result } => self.arrow_wf(arg, result),
             Type::Var(var) => self.u_var_wf(var),
             Type::Existential(var) => self.evar_wf(var) || self.solved_evar_wf(var),
-            Type::App {
-                type_constructor,
-                arguments,
-            } => self.wf_type(type_constructor) || arguments.iter().all(|ty| self.wf_type(ty)),
         }
     }
 
@@ -544,13 +468,6 @@ impl Context {
                 vars: vars.clone(),
                 ty: Box::new(self.apply(ty)),
             },
-            Type::App {
-                type_constructor,
-                arguments,
-            } => Type::App {
-                type_constructor: Box::new(self.apply(type_constructor)),
-                arguments: arguments.iter().map(|arg| self.apply(arg)).collect(),
-            },
         }
     }
 
@@ -568,13 +485,6 @@ impl Context {
             Type::Poly { vars, ty } => Type::Poly {
                 vars: vars.clone(),
                 ty: Box::new(self.apply_(*ty)),
-            },
-            Type::App {
-                type_constructor,
-                arguments,
-            } => Type::App {
-                type_constructor: Box::new(self.apply_(*type_constructor)),
-                arguments: arguments.iter().map(|arg| self.apply(arg)).collect(),
             },
         }
     }
@@ -756,26 +666,6 @@ impl TypeChecker {
                 let mut res = self.subtype(tmp_ctx, &renamed_ty, ty2)?;
                 res.drop_marker(ContextElem::Marker(marker_var));
                 Ok(res)
-            }
-            (
-                Type::App {
-                    type_constructor: tc1,
-                    arguments: a1,
-                },
-                Type::App {
-                    type_constructor: tc2,
-                    arguments: a2,
-                },
-            ) => {
-                if a1.len() != a2.len() {
-                    return Err(TypeError::Subtype(ty1.clone(), ty2.clone()));
-                }
-                let mut tmp_ctx = self.subtype(ctx, tc1, tc2)?;
-                for (ty1, ty2) in a1.iter().zip(a2) {
-                    tmp_ctx = self.subtype(tmp_ctx, ty1, ty2)?;
-                }
-
-                Ok(tmp_ctx)
             }
             (Type::Existential(ex), ty) if !ty.free_vars().contains(ex) => {
                 self.instantiate_l(ctx, ex, ty)
@@ -1255,16 +1145,6 @@ mod tests {
         let ctx = Context::new(vec![]);
         let a = Type::poly(vec!["a"], Type::var("a"));
         let b = Type::int();
-        // (forall a. a) <: Int
-        let res = tc.subtype(ctx, &a, &b);
-        assert_eq!(res, Ok(Context::new(vec![])));
-    }
-
-    fn subty_2() {
-        let mut tc = TypeChecker::new();
-        let ctx = Context::new(vec![]);
-        let a = Type::app(Type::int(), vec![Type::var("a")]);
-        let b = Type::app(Type::var("b"), vec![Type::boolean()]);
         // (forall a. a) <: Int
         let res = tc.subtype(ctx, &a, &b);
         assert_eq!(res, Ok(Context::new(vec![])));

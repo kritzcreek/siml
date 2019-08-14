@@ -2,7 +2,7 @@ use pretty_assertions::assert_eq;
 use siml::expr::Expr;
 use siml::grammar::{ExprParser, TypeParser};
 use siml::token::Lexer;
-use siml::types::{Scheme, Environment, Type, TypeChecker};
+use siml::types::{Environment, Scheme, Type, TypeChecker};
 
 fn ty(input: &str) -> Type {
     let lexer = Lexer::new(input);
