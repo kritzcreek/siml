@@ -27,10 +27,10 @@ fn print_bi_ty_res(ty_res: Result<bi_types::Type, bi_types::TypeError>) -> Strin
     }
 }
 
-fn print_eval_res(ty_res: Result<term::Term, term::EvalError>) -> String {
-    match ty_res {
+fn print_eval_res(res: Result<term::Term, term::EvalError>) -> String {
+    match res {
         Err(err) => err.print(),
-        Ok(ty) => ty.print(),
+        Ok(term) => term.print(),
     }
 }
 
@@ -77,14 +77,11 @@ pub fn run_program(input: &str) {
             match type_checker.synth_prog(&prog) {
                 Err(err) => error!("{}", err.print()),
                 Ok(tys) => {
-                    //                    info!(
-                    //                        "{:#?}",
-                    //                        tys.iter()
-                    //                            .map(|(name, ty)| format!("{:?} : {}", name, ty.print()))
-                    //                            .collect::<Vec<_>>()
-                    //                    );
-                    info!("Executing WASM:");
-                    wasm::test_wasm(tys)
+                    info!("Running interpreter:");
+                    let eval_result = Term::eval_prog(tys.into_iter().map(|(e, _)| e).collect());
+                    info!("{}", print_eval_res(eval_result));
+//                    info!("Running WASM backend:");
+//                    wasm::test_wasm(tys);
                 }
             };
         }
