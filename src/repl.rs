@@ -75,13 +75,18 @@ pub fn run_program(input: &str) {
         Ok(prog) => {
             let mut type_checker = bi_types::TypeChecker::new();
             match type_checker.synth_prog(&prog) {
-                Err(err) => error!("{}", err.print()),
+                Err(err) => {
+                    error!("{}", err.print());
+                    info!("Trying interpreter anyway:");
+                    let eval_result = Term::eval_prog(prog);
+                    info!("{}", print_eval_res(eval_result));
+                }
                 Ok(tys) => {
                     info!("Running interpreter:");
                     let eval_result = Term::eval_prog(tys.into_iter().map(|(e, _)| e).collect());
                     info!("{}", print_eval_res(eval_result));
-//                    info!("Running WASM backend:");
-//                    wasm::test_wasm(tys);
+                    // info!("Running WASM backend:");
+                    // wasm::test_wasm(tys);
                 }
             };
         }

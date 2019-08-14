@@ -1,4 +1,4 @@
-use crate::expr::{Expr, HasIdent, Literal, Declaration};
+use crate::expr::{Declaration, Expr, HasIdent, Literal};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -21,6 +21,11 @@ pub enum Term {
         env: Env,
     },
     Literal(Literal),
+    Pack {
+        tag: u32,
+        arity: u32,
+        values: Vec<Term>,
+    },
 }
 
 impl fmt::Display for Term {
@@ -33,6 +38,8 @@ impl fmt::Display for Term {
 pub enum EvalError {
     UnknownVar(String),
     ApplyingNonLambda(Term),
+    AddingNonNumbers(Term, Term),
+    ProjectingFst(Term),
 }
 
 impl EvalError {
@@ -40,17 +47,22 @@ impl EvalError {
         match self {
             EvalError::UnknownVar(var) => format!("Unknown variable: {}", var),
             EvalError::ApplyingNonLambda(term) => format!("{} is not a function", term),
+            EvalError::AddingNonNumbers(t1, t2) => {
+                format!("Attempting to add non-ints: {} + {}", t1, t2)
+            }
+            EvalError::ProjectingFst(term) => {
+                format!("Attempting to project from a non-tuple: {}", term)
+            }
         }
     }
 }
 
 fn initial_env() -> Env {
-    HashMap::new();
+    HashMap::new()
 }
 
 impl Term {
-    fn from_expr<B: HasIdent>(expr: &Expr<B>) -> Term
-    {
+    fn from_expr<B: HasIdent>(expr: &Expr<B>) -> Term {
         match expr {
             Expr::App { func, arg } => Term::App {
                 func: Box::new(Term::from_expr(func)),
@@ -73,15 +85,14 @@ impl Term {
         }
     }
 
-    pub fn eval_expr<B: HasIdent>(expr: &Expr<B>) -> Result<Term, EvalError>
-    {
+    pub fn eval_expr<B: HasIdent>(expr: &Expr<B>) -> Result<Term, EvalError> {
         Term::eval(&initial_env(), Term::from_expr(expr))
     }
 
     pub fn eval_prog<B: HasIdent>(prog: Vec<Declaration<B>>) -> Result<Term, EvalError> {
         let mut env = initial_env();
         let mut res = Term::Var("nuttin".to_string());
-        for Declaration::Value{ name, expr } in prog {
+        for Declaration::Value { name, expr } in prog {
             res = Term::eval(&env, Term::from_expr(&expr))?;
             env.insert(name, res.clone());
         }
@@ -96,8 +107,38 @@ impl Term {
                         Some(Term::Literal(Literal::Int(i1))),
                         Some(Term::Literal(Literal::Int(i2))),
                     ) => Ok(Term::Literal(Literal::Int(i1 + i2))),
-                    (e1, e2) => panic!("Attempting to add non-numbers: {:?} {:?}", e1, e2),
+                    (Some(term1), Some(term2)) => {
+                        panic!("Attempting to add non-numbers: {:?} {:?}", term1, term2)
+                    }
+                    (_, _) => panic!("Bad implementation for add"),
                 },
+                "primfst" => match env.get("x") {
+                    Some(Term::Pack {
+                        tag: _,
+                        arity: _,
+                        values,
+                    }) => Ok(values[0].clone()),
+                    Some(term) => Err(EvalError::ProjectingFst(term.clone())),
+                    None => panic!("Bad implementation for fst"),
+                },
+                "primsnd" => match env.get("x") {
+                    Some(Term::Pack {
+                        tag: _,
+                        arity: _,
+                        values,
+                    }) => Ok(values[1].clone()),
+                    Some(term) => Err(EvalError::ProjectingFst(term.clone())),
+                    None => panic!("Bad implementation for fst"),
+                },
+                "primtuple" => match (env.get("x"), env.get("y")) {
+                    (Some(t1), Some(t2)) => Ok(Term::Pack {
+                        tag: 1,
+                        arity: 2,
+                        values: vec![t1.clone(), t2.clone()],
+                    }),
+                    _ => panic!("Bad implementation for fst"),
+                },
+
                 _ => match env.get(&s) {
                     Some(t) => Ok(t.clone()),
                     None => Err(EvalError::UnknownVar(s)),
@@ -124,6 +165,7 @@ impl Term {
                 }
                 t => Err(EvalError::ApplyingNonLambda(t)),
             },
+            Term::Pack { .. } => Ok(term),
         }
     }
 
@@ -144,6 +186,16 @@ impl Term {
             Term::App { func, arg } => parens_if(
                 depth > 0,
                 format!("{} {}", func.print_inner(depth), arg.print_inner(depth + 1)),
+            ),
+            Term::Pack { tag, arity, values } => format!(
+                "Pack {{{}, {}, [{}]}}",
+                tag,
+                arity,
+                values
+                    .into_iter()
+                    .map(|t| t.print())
+                    .collect::<Vec<String>>()
+                    .join(", ")
             ),
         }
     }
