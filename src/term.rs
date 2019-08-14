@@ -45,24 +45,11 @@ impl EvalError {
 }
 
 fn initial_env() -> Env {
-    let mut env = HashMap::new();
-    let builtin_add: Term = Term::Closure {
-        binder: "#add1".to_string(),
-        env: HashMap::new(),
-        body: Box::new(Term::Lambda {
-            binder: "#add2".to_string(),
-            body: Box::new(Term::Var("#add".to_string())),
-        }),
-    };
-    env.insert("pi".to_string(), Term::Literal(Literal::Int(3)));
-    env.insert("add".to_string(), builtin_add);
-    env
+    HashMap::new();
 }
 
 impl Term {
-    fn from_expr<B>(expr: &Expr<B>) -> Term
-    where
-        B: HasIdent,
+    fn from_expr<B: HasIdent>(expr: &Expr<B>) -> Term
     {
         match expr {
             Expr::App { func, arg } => Term::App {
@@ -86,9 +73,7 @@ impl Term {
         }
     }
 
-    pub fn eval_expr<B>(expr: &Expr<B>) -> Result<Term, EvalError>
-    where
-        B: HasIdent,
+    pub fn eval_expr<B: HasIdent>(expr: &Expr<B>) -> Result<Term, EvalError>
     {
         Term::eval(&initial_env(), Term::from_expr(expr))
     }
@@ -96,7 +81,7 @@ impl Term {
     fn eval(env: &Env, term: Term) -> Result<Term, EvalError> {
         match term {
             Term::Var(s) => match s.as_ref() {
-                "#add" => match (env.get("#add1"), env.get("#add2")) {
+                "primadd" => match (env.get("x"), env.get("y")) {
                     (
                         Some(Term::Literal(Literal::Int(i1))),
                         Some(Term::Literal(Literal::Int(i2))),
