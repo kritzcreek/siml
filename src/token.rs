@@ -58,15 +58,15 @@ impl<'input> Lexer<'input> {
 
 fn is_ident_start(c: &char) -> bool {
     match c {
-        'a'...'z' | 'A'...'Z' => true,
+        'a'..='z' | 'A'..='Z' => true,
         _ => false,
     }
 }
 
 fn is_ident_member(c: &char) -> bool {
     match c {
-        'a'...'z' => true,
-        '0'...'9' => true,
+        'a'..='z' => true,
+        '0'..='9' => true,
         '_' => true,
         _ => false,
     }
