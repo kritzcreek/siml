@@ -533,6 +533,8 @@ pub enum TypeError {
     InvalidAnnotation(Type),
     IsNotAFunction(Type),
     ExistentialEscaped(Context, Type, String),
+    OccursCheck(String, Type),
+    Unification(Type, Type),
 }
 
 impl TypeError {
@@ -547,6 +549,10 @@ impl TypeError {
             TypeError::ExistentialEscaped(ctx, ty, ex) => {
                 format!("An existential escaped, go get it! {} {} {}", ctx, ty, ex)
             }
+            TypeError::OccursCheck(var, ty) => {
+                format!("Occurs check failed when unifying {} with type {}", var, ty)
+            }
+            TypeError::Unification(ty1, ty2) => format!("Failed to unify {} with {}", ty1, ty2),
         }
     }
 }
@@ -608,12 +614,48 @@ impl TypeChecker {
         (renamed_ty, fresh_vars.into_iter().map(|x| x.1).collect())
     }
 
-    pub fn subtype<'a>(
-        &mut self,
-        ctx: Context,
-        ty1: &Type,
-        ty2: &Type,
-    ) -> Result<Context, TypeError> {
+    fn var_bind(&mut self, ctx: Context, var: &String, ty: &Type) -> Result<Context, TypeError> {
+        if ty.free_vars().contains(var) {
+            Err(TypeError::OccursCheck(var.clone(), ty.clone()))
+        } else {
+            Ok(ctx
+                .solve(var, ty.clone())
+                .expect("Something went wrong in var_bind"))
+        }
+    }
+
+    pub fn unify(&mut self, ctx: Context, ty1: &Type, ty2: &Type) -> Result<Context, TypeError> {
+        debug!("[unify] \n{} ({}) ({})", ctx, ty1, ty2);
+        match (ty1, ty2) {
+            (ty1, ty2) if ty1 == ty2 => Ok(ctx),
+            (
+                Type::Fun {
+                    arg: arg1,
+                    result: result1,
+                },
+                Type::Fun {
+                    arg: arg2,
+                    result: result2,
+                },
+            ) => {
+                let tmp_ctx = self.unify(ctx, arg1, arg2)?;
+                let res1 = tmp_ctx.apply(result1);
+                let res2 = tmp_ctx.apply(result2);
+                self.unify(tmp_ctx, &res1, &res2)
+            }
+            (Type::Tuple(fst1, snd1), Type::Tuple(fst2, snd2)) => {
+                let tmp_ctx = self.unify(ctx, fst1, fst2)?;
+                let snd1 = tmp_ctx.apply(snd1);
+                let snd2 = tmp_ctx.apply(snd2);
+                self.unify(tmp_ctx, &snd1, &snd2)
+            }
+            (Type::Existential(ex), ty) => self.var_bind(ctx, ex, ty),
+            (ty, Type::Existential(ex)) => self.var_bind(ctx, ex, ty),
+            (_, _) => Err(TypeError::Unification(ty1.clone(), ty2.clone())),
+        }
+    }
+
+    pub fn subtype(&mut self, ctx: Context, ty1: &Type, ty2: &Type) -> Result<Context, TypeError> {
         debug!("[subtype] \n{} ({}) ({})", ctx, ty1, ty2);
         assert!(ctx.wf_type(ty1));
         assert!(ctx.wf_type(ty2));
@@ -637,12 +679,7 @@ impl TypeChecker {
                 let res2 = tmp_ctx.apply(result2);
                 self.subtype(tmp_ctx, &res1, &res2)
             }
-            (Type::Tuple(fst1, snd1), Type::Tuple(fst2, snd2)) => {
-                let tmp_ctx = self.subtype(ctx, fst1, fst2)?;
-                let snd1 = tmp_ctx.apply(snd1);
-                let snd2 = tmp_ctx.apply(snd2);
-                self.subtype(tmp_ctx, &snd1, &snd2)
-            }
+            (Type::Tuple(..), Type::Tuple(..)) => self.unify(ctx, ty1, ty2),
             (ty1, Type::Poly { vars, ty: ty2 }) => {
                 let (renamed_ty, fresh_vars) = self.rename_poly(vars, ty2, |v| Type::Var(v));
 
