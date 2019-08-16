@@ -33,11 +33,8 @@ pub Program: Vec<Declaration<String>> = {
 pub Declaration: Declaration<String> = {
  "let" <name: "identifier"> ":" <ty: BiType> "=" <expr: Expr> ";" =>
    Declaration::Value{ expr: Expr::Ann { expr: Box::new(expr), ty }, name: name.to_string() },
-// "type" <name: "identifier"> "(" <constructors: CommaSep<DataConstructor>> ")" ";" =>
-//   Declaration::Type
-//     { name: name.to_string(),
-//       constructors
-//     }
+ "type" <name: "identifier"> "(" <constructors: CommaSep<DataConstructor>> ")" ";" =>
+   Declaration::Type { name: name.to_string(), constructors }
 }
 
 DataConstructor: DataConstructor = {

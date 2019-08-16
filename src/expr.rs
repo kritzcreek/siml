@@ -7,10 +7,10 @@ use std::fmt;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Declaration<B> {
     Value { name: String, expr: Expr<B> },
-    // Type {
-    //     name: String,
-    //     constructors: Vec<DataConstructor>,
-    // },
+    Type {
+        name: String,
+        constructors: Vec<DataConstructor>,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

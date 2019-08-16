@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::expr::{Declaration, Expr, Literal, ParserExpr, TypedExpr, Var};
+use crate::expr::{DataConstructor, Declaration, Expr, Literal, ParserExpr, TypedExpr, Var};
 use crate::pretty::render_doc;
 use pretty::{BoxDoc, Doc};
 use std::collections::HashSet;
@@ -224,7 +224,15 @@ impl Type {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub struct TypeDefinition {
+    name: String,
+    type_parameters: Vec<String>,
+    constructors: Vec<DataConstructor>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Context {
+    types: Vec<TypeDefinition>,
     elems: Vec<ContextElem>,
 }
 
@@ -236,7 +244,14 @@ impl fmt::Display for Context {
 
 impl Context {
     pub fn new(elems: Vec<ContextElem>) -> Context {
-        Context { elems }
+        Context {
+            types: vec![],
+            elems,
+        }
+    }
+
+    pub fn add_type(&mut self, type_def: TypeDefinition) {
+        self.types.push(type_def);
     }
 
     pub fn print(&self) -> String {
@@ -354,17 +369,23 @@ impl Context {
         })
     }
 
-    fn find_var(&self, var: &String) -> Option<&Type> {
-        self.elems.iter().find_map(|e| match e {
-            ContextElem::Anno(v, ty) => {
-                if var == v {
-                    Some(ty)
-                } else {
-                    None
+    fn find_var(&self, var: &String) -> Option<Type> {
+        for elem in self.elems.iter() {
+            match elem {
+                ContextElem::Anno(v, ty) if var == v => return Some(ty.clone()),
+                _ => {}
+            }
+        }
+
+        for type_def in self.types.iter() {
+            for dtor in type_def.constructors.iter() {
+                if dtor.name == *var {
+                    return Some(Type::Constructor(type_def.name.clone()));
                 }
             }
-            _ => None,
-        })
+        }
+
+        None
     }
 
     /// solve (ΓL,α^,ΓR) α τ = (ΓL,α = τ,ΓR)
@@ -393,7 +414,10 @@ impl Context {
     fn forall_wf(&self, vars: &Vec<String>, ty: &Type) -> bool {
         let mut tmp_elems = self.elems.clone();
         tmp_elems.extend(vars.iter().map(|v| ContextElem::Universal(v.clone())));
-        let tmp_ctx = Context { elems: tmp_elems };
+        let tmp_ctx = Context {
+            types: self.types.clone(),
+            elems: tmp_elems,
+        };
 
         tmp_ctx.wf_type(ty)
     }
@@ -1144,7 +1168,7 @@ impl TypeChecker {
     }
     pub fn synth_prog(
         &mut self,
-        prog: &Vec<Declaration<String>>,
+        prog: Vec<Declaration<String>>,
     ) -> Result<Vec<(Declaration<Var>, Type)>, TypeError> {
         let mk_prim = |name: &str| {
             ContextElem::Anno(
@@ -1164,19 +1188,34 @@ impl TypeChecker {
         ]);
         let mut result = vec![];
 
-        for Declaration::Value { name, expr } in prog {
-            debug!("Inferring declaration {}: \n=============================", name);
-            let (mut new_ctx, ty, expr) = self.infer(ctx, expr)?;
-            new_ctx.push(ContextElem::Anno(name.to_string(), new_ctx.apply(&ty)));
+        for decl in prog {
+            match decl {
+                Declaration::Type { name, constructors } => {
+                    ctx.add_type(TypeDefinition {
+                        name: name.clone(),
+                        type_parameters: vec![],
+                        constructors: constructors.clone(),
+                    });
+                    result.push((Declaration::Type { name, constructors }, Type::int()))
+                }
+                Declaration::Value { name, expr } => {
+                    debug!(
+                        "Inferring declaration {}: \n=============================",
+                        name
+                    );
+                    let (mut new_ctx, ty, expr) = self.infer(ctx, &expr)?;
+                    new_ctx.push(ContextElem::Anno(name.to_string(), new_ctx.apply(&ty)));
 
-            ctx = new_ctx;
-            result.push((
-                Declaration::Value {
-                    name: name.clone(),
-                    expr,
-                },
-                ty,
-            ));
+                    ctx = new_ctx;
+                    result.push((
+                        Declaration::Value {
+                            name: name.clone(),
+                            expr,
+                        },
+                        ty,
+                    ));
+                }
+            }
         }
 
         Ok(result)

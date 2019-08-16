@@ -97,9 +97,25 @@ impl Term {
     pub fn eval_prog<B: HasIdent>(prog: Vec<Declaration<B>>) -> Result<Term, EvalError> {
         let mut env = initial_env();
         let mut res = Term::Var("nuttin".to_string());
-        for Declaration::Value { name, expr } in prog {
-            res = Term::eval(&env, Term::from_expr(&expr))?;
-            env.insert(name, res.clone());
+        for decl in prog {
+            match decl {
+                Declaration::Value { name, expr } => {
+                    res = Term::eval(&env, Term::from_expr(&expr))?;
+                    env.insert(name, res.clone());
+                }
+                Declaration::Type { name: _, constructors } => {
+                    for (ix, constructor) in constructors.into_iter().enumerate() {
+                        env.insert(
+                            constructor.name,
+                            Term::Pack {
+                                tag: ix as u32,
+                                arity: 0,
+                                values: vec![],
+                            },
+                        );
+                    }
+                }
+            }
         }
         Ok(res)
     }
@@ -146,7 +162,10 @@ impl Term {
 
                 _ => match env.get(&s) {
                     Some(t) => Ok(t.clone()),
-                    None => Err(EvalError::UnknownVar(s)),
+                    None => {
+                        // warn!("{:?}", env);
+                        Err(EvalError::UnknownVar(s))
+                    },
                 },
             },
             Term::Lambda { binder, body } => Ok(Term::Closure {

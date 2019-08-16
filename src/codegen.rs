@@ -26,9 +26,10 @@ impl Codegen {
         let mut index_supply: u32 = 0;
         let mut global_names = HashMap::new();
         for decl in prog {
-            let (Declaration::Value { name, expr: _ }, ty) = decl;
-            global_names.insert(name.to_string(), (index_supply, ty.clone()));
-            index_supply += 1;
+            if let (Declaration::Value { name, expr: _ }, ty) = decl {
+                global_names.insert(name.to_string(), (index_supply, ty.clone()));
+                index_supply += 1;
+            }
         }
         self.global_names = global_names;
     }
@@ -39,8 +40,9 @@ impl Codegen {
         self.function_table();
         self.rts();
         for decl in prog {
-            let (Declaration::Value { name, expr }, ty) = decl;
-            self.fun(name, expr, ty);
+            if let (Declaration::Value { name, expr }, ty) = decl {
+                self.fun(name, expr, ty);
+            }
         }
         self.entry_point();
         self.out += "\n)";

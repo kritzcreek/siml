@@ -74,7 +74,7 @@ pub fn run_program(input: &str) {
         Err(err) => error!("Parse failure: {:?}", err),
         Ok(prog) => {
             let mut type_checker = bi_types::TypeChecker::new();
-            match type_checker.synth_prog(&prog) {
+            match type_checker.synth_prog(prog.clone()) {
                 Err(err) => {
                     error!("{}", err.print());
                     info!("Trying interpreter anyway:");

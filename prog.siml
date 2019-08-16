@@ -10,6 +10,12 @@ let fst : forall a b. (a, b) -> a =
 let snd : forall a b. (a, b) -> b =
   \x. primsnd;
 
+let swap : forall a b. (a, b) -> (b, a) =
+  \t. (snd t, fst t);
+
+let self_application : forall b. (forall a. a -> a) -> b -> b =
+  \f. f f;
+
 let const : forall a b. a -> b -> a =
   \a. \b. a;
 
@@ -32,9 +38,10 @@ let main : Int =
   let x = twice (add 10) (run_st const10) in
   add x (let x = 5 in x);
 
-let swap : forall a b. (a, b) -> (b, a) =
-  \t. (snd t, fst t);
-
 let tuple_test : Int =
-  fst (swap (swap (42, true)));
+  fst (\x. x, true) (snd (snd (true, (true, 2))));
 
+type Day (Monday, Tuesday);
+type Color (Red, Green);
+let red : Color = Red;
+let green : Color = Green;
