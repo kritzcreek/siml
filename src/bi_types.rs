@@ -864,6 +864,12 @@ impl TypeChecker {
                     },
                 ))
             }
+            (Expr::Tuple(fst, snd), Type::Tuple(ty_fst, ty_snd)) => {
+                let (ctx, typed_fst) = self.check(ctx, fst, ty_fst)?;
+                let (ctx, typed_snd) = self.check(ctx, snd, ty_snd)?;
+                let typed_fst = ctx.apply_expr(typed_fst);
+                Ok((ctx, Expr::tuple(typed_fst, typed_snd)))
+            }
             (Expr::Let { binder, expr, body }, ty) => {
                 let (ctx, ty_binder, typed_expr) = self.infer(ctx, expr)?;
                 let mut new_ctx = ctx;
