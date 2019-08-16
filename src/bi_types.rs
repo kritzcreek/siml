@@ -992,10 +992,11 @@ impl TypeChecker {
 
                 let (mut res_ctx, typed_body) = self.check(
                     tmp_ctx,
-                    &body.subst(binder, &Expr::Var(binder_fresh)),
+                    &body.subst(binder, &Expr::Var(binder_fresh.clone())),
                     &Type::Existential(b.clone()),
                 )?;
                 res_ctx.drop_marker(marker);
+                let typed_body = typed_body.subst_var(&binder_fresh, binder);
                 Ok((
                     res_ctx,
                     Type::fun(Type::ex(&a), Type::ex(&b)),
