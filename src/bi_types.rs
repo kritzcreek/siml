@@ -829,6 +829,7 @@ impl TypeChecker {
         expr: &ParserExpr,
         ty: &Type,
     ) -> Result<(Context, TypedExpr), TypeError> {
+        debug!("[checking] {} |- {} : {}", ctx, expr, ty);
         match (expr, ty) {
             (Expr::Literal(Literal::Int(i)), ty) if ty == &Type::int() => Ok((ctx, Expr::int(*i))),
             (Expr::Literal(Literal::Bool(b)), ty) if ty == &Type::boolean() => {
@@ -1121,6 +1122,7 @@ impl TypeChecker {
         let mut result = vec![];
 
         for Declaration::Value { name, expr } in prog {
+            debug!("Inferring declaration {}: \n=============================", name);
             let (mut new_ctx, ty, expr) = self.infer(ctx, expr)?;
             new_ctx.push(ContextElem::Anno(name.to_string(), new_ctx.apply(&ty)));
 
