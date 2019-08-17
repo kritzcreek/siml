@@ -87,6 +87,7 @@ impl Term {
                 arity: 2,
                 values: vec![Term::from_expr(fst), Term::from_expr(snd)],
             },
+            Expr::Case {..} => Term::Var("ImplementMe".to_string())
         }
     }
 

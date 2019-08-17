@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::expr::{DataConstructor, Declaration, Expr, Literal, ParserExpr, TypedExpr, Var};
+use crate::expr::{DataConstructor, Declaration, Expr, Literal, Match, ParserExpr, TypedExpr, Var};
 use crate::pretty::render_doc;
 use pretty::{BoxDoc, Doc};
 use std::collections::HashSet;
@@ -884,6 +884,24 @@ impl TypeChecker {
         }
     }
 
+    fn check_case(
+        &mut self,
+        ctx: Context,
+        case: &Match<String>,
+        ty_match: &Type,
+        ty: &Type,
+    ) -> Result<(Context, Match<Var>), TypeError> {
+        // Ignoring binders for now
+        let ty_dtor;
+        match ctx.find_var(case.data_constructor) {
+            None => TypeError::UnknownDataConstructor(case.data_constructor),
+            Some(ty_dtor) => {
+                ty_dtor = ty_dtor;
+            }
+        }
+        Ok((ctx, case))
+    }
+
     fn check(
         &mut self,
         ctx: Context,
@@ -954,6 +972,22 @@ impl TypeChecker {
                         },
                         expr: Box::new(typed_expr),
                         body: Box::new(typed_body),
+                    },
+                ))
+            }
+            (Expr::Case { expr, cases }, ty) => {
+                let (mut ctx, ty_expr, typed_expr) = self.infer(ctx, expr)?;
+                let mut cases = vec![];
+                for case in cases.iter() {
+                    let (new_ctx, typed_case) = self.check_case(ctx, case, ty_expr, ty)?;
+                    ctx = new_ctx;
+                    cases.push(typed_case);
+                }
+                Ok((
+                    ctx,
+                    Expr::Case {
+                        expr: Box::new(typed_expr),
+                        cases,
                     },
                 ))
             }

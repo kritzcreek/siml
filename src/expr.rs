@@ -6,7 +6,10 @@ use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Declaration<B> {
-    Value { name: String, expr: Expr<B> },
+    Value {
+        name: String,
+        expr: Expr<B>,
+    },
     Type {
         name: String,
         constructors: Vec<DataConstructor>,
@@ -69,6 +72,53 @@ impl HasIdent for Var {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Match<B> {
+    data_constructor: B,
+    binders: Vec<B>,
+    expr: Expr<B>,
+}
+
+impl<B> Match<B> {
+    pub fn map<A: Sized, F>(self, f: &F) -> Match<A>
+    where
+        F: Fn(B) -> A,
+    {
+        Match {
+            data_constructor: f(self.data_constructor),
+            binders: self.binders.into_iter().map(|binder| f(binder)).collect(),
+            expr: self.expr.map(f),
+        }
+    }
+
+    pub fn free_vars(&self) -> HashSet<String>
+    where
+        B: HasIdent,
+    {
+        let mut res = self.expr.free_vars();
+        for binder in self.binders.iter() {
+            res.remove(&binder.ident());
+        }
+        res
+    }
+
+    pub fn to_doc(&self) -> Doc<BoxDoc<()>>
+    where
+        B: HasIdent,
+    {
+        Doc::text(self.data_constructor.ident())
+            .append(Doc::space())
+            .append(Doc::intersperse(
+                self.binders.iter().map(|x| Doc::text(x.ident())),
+                Doc::space(),
+            ))
+            .append(Doc::space())
+            .append(Doc::text("=>"))
+            .append(Doc::space())
+            .append(self.expr.to_doc())
+    }
+}
+
 /// The AST for expressions. It's parameterized over it's variable
 /// names. This is done so the type checker can insert type
 /// information on every variable.
@@ -90,6 +140,10 @@ pub enum Expr<B> {
     Var(B),
     Literal(Literal),
     Tuple(Box<Expr<B>>, Box<Expr<B>>),
+    Case {
+        expr: Box<Expr<B>>,
+        cases: Vec<Match<B>>,
+    },
     Ann {
         expr: Box<Expr<B>>,
         ty: Type,
@@ -131,6 +185,10 @@ impl<B> Expr<B> {
             },
             Expr::Literal(lit) => Expr::Literal(lit),
             Expr::Tuple(fst, snd) => Expr::Tuple(Box::new(fst.map(f)), Box::new(snd.map(f))),
+            Expr::Case { expr, cases } => Expr::Case {
+                expr: Box::new(expr.map(f)),
+                cases: cases.into_iter().map(|case| case.map(f)).collect(),
+            },
         }
     }
 
@@ -208,6 +266,15 @@ impl<B> Expr<B> {
                 )
                 .append(Doc::text(")"))
                 .group(),
+            Expr::Case { expr, cases } => Doc::text("match")
+                .append(Doc::space())
+                .append(expr.to_doc())
+                .append(Doc::text("{"))
+                .append(Doc::intersperse(
+                    cases.into_iter().map(|case| case.to_doc()),
+                    Doc::text(","),
+                ))
+                .append(Doc::text("}")),
             Expr::Tuple(fst, snd) => Doc::text("(")
                 .append(fst.to_doc())
                 .append(Doc::text(","))
@@ -314,6 +381,13 @@ impl<B> Expr<B> {
             Expr::Tuple(fst, snd) => fst.free_vars().union(&snd.free_vars()).cloned().collect(),
             Expr::Literal(_) => HashSet::new(),
             Expr::Ann { expr, ty: _ } => expr.free_vars(),
+            Expr::Case { expr, cases } => {
+                let mut res = expr.free_vars();
+                for case in cases {
+                    res.extend(case.free_vars())
+                }
+                res
+            }
         }
     }
 

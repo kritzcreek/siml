@@ -100,7 +100,8 @@ impl Codegen {
                 expr: Box::new(self.let_lift_inner(used, *expr)),
                 ty,
             },
-            Expr::Tuple(_, _) => unreachable!("TODO: Tuple"),
+            Expr::Tuple(..) => unreachable!("TODO: Tuple"),
+            Expr::Case{..} => unreachable!("TODO: Tuple"),
         }
     }
 

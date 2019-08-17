@@ -122,6 +122,10 @@ impl Eval {
                 self.substitute(fst, scrutinee, replacement),
                 self.substitute(snd, scrutinee, replacement),
             ),
+            Expr::Case{..} => {
+                unreachable!("TODO")
+            }
+
         }
     }
 }
