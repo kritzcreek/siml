@@ -74,9 +74,9 @@ impl HasIdent for Var {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Match<B> {
-    data_constructor: B,
-    binders: Vec<B>,
-    expr: Expr<B>,
+    pub data_constructor: String,
+    pub binders: Vec<B>,
+    pub expr: Expr<B>,
 }
 
 impl<B> Match<B> {
@@ -85,7 +85,7 @@ impl<B> Match<B> {
         F: Fn(B) -> A,
     {
         Match {
-            data_constructor: f(self.data_constructor),
+            data_constructor: self.data_constructor,
             binders: self.binders.into_iter().map(|binder| f(binder)).collect(),
             expr: self.expr.map(f),
         }

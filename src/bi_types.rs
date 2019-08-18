@@ -554,6 +554,7 @@ impl ContextElem {
 pub enum TypeError {
     Subtype(Type, Type),
     UnknownVar(String),
+    UnknownDataConstructor(String),
     InvalidAnnotation(Type),
     IsNotAFunction(Type),
     ExistentialEscaped(Context, Type, String),
@@ -568,6 +569,9 @@ impl TypeError {
                 format!("Can't figure out subtyping between: {} <: {}", ty1, ty2)
             }
             TypeError::UnknownVar(var) => format!("Unknown variable: {}", var),
+            TypeError::UnknownDataConstructor(dtor) => {
+                format!("Unknown data constructor: {}", dtor)
+            }
             TypeError::InvalidAnnotation(ty) => format!("{} is not a valid annotation here.", ty),
             TypeError::IsNotAFunction(ty) => format!("{} is not a function", ty),
             TypeError::ExistentialEscaped(ctx, ty, ex) => {
@@ -892,14 +896,30 @@ impl TypeChecker {
         ty: &Type,
     ) -> Result<(Context, Match<Var>), TypeError> {
         // Ignoring binders for now
-        let ty_dtor;
-        match ctx.find_var(case.data_constructor) {
-            None => TypeError::UnknownDataConstructor(case.data_constructor),
-            Some(ty_dtor) => {
-                ty_dtor = ty_dtor;
+        let ty_dtor: Type;
+        match ctx.find_var(&case.data_constructor) {
+            None => {
+                return Err(TypeError::UnknownDataConstructor(
+                    case.data_constructor.clone(),
+                ));
+            }
+            Some(dtor) => {
+                ty_dtor = dtor;
             }
         }
-        Ok((ctx, case))
+
+        let ctx = self.unify(ctx, &ty_dtor, ty_match)?;
+        let (ctx, typed_expr) = self.check(ctx, &case.expr, ty)?;
+
+        Ok((
+            ctx,
+            Match {
+                data_constructor: case.data_constructor.clone(),
+                // TODO
+                binders: vec![],
+                expr: typed_expr,
+            },
+        ))
     }
 
     fn check(
@@ -977,17 +997,17 @@ impl TypeChecker {
             }
             (Expr::Case { expr, cases }, ty) => {
                 let (mut ctx, ty_expr, typed_expr) = self.infer(ctx, expr)?;
-                let mut cases = vec![];
+                let mut typed_cases = vec![];
                 for case in cases.iter() {
-                    let (new_ctx, typed_case) = self.check_case(ctx, case, ty_expr, ty)?;
+                    let (new_ctx, typed_case) = self.check_case(ctx, case, &ty_expr, ty)?;
                     ctx = new_ctx;
-                    cases.push(typed_case);
+                    typed_cases.push(typed_case);
                 }
                 Ok((
                     ctx,
                     Expr::Case {
                         expr: Box::new(typed_expr),
-                        cases,
+                        cases: typed_cases,
                     },
                 ))
             }
@@ -1125,6 +1145,7 @@ impl TypeChecker {
                     },
                 ))
             }
+            Expr::Case{..} => unreachable!("TODO"),
             Expr::Tuple(fst, snd) => {
                 let (ctx, fst_ty, typed_fst) = self.infer(ctx, fst)?;
                 let (ctx, snd_ty, typed_snd) = self.infer(ctx, snd)?;

@@ -1,4 +1,4 @@
-use crate::expr::{Declaration, Expr, HasIdent, Literal};
+use crate::expr::{Declaration, Expr, HasIdent, Literal, Match};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -26,6 +26,27 @@ pub enum Term {
         arity: u32,
         values: Vec<Term>,
     },
+    Case {
+        expr: Box<Term>,
+        cases: Vec<TermMatch>,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct TermMatch {
+    pub data_constructor: String,
+    pub binders: Vec<String>,
+    pub expr: Term,
+}
+
+impl TermMatch {
+    fn from_match<B: HasIdent>(match_: &Match<B>) -> TermMatch {
+        TermMatch {
+            data_constructor: match_.data_constructor.clone(),
+            binders: vec![],
+            expr: Term::from_expr(&match_.expr),
+        }
+    }
 }
 
 impl fmt::Display for Term {
@@ -87,7 +108,10 @@ impl Term {
                 arity: 2,
                 values: vec![Term::from_expr(fst), Term::from_expr(snd)],
             },
-            Expr::Case {..} => Term::Var("ImplementMe".to_string())
+            Expr::Case { expr, cases } => Term::Case {
+                expr: Box::new(Term::from_expr(&expr)),
+                cases: cases.iter().map(|m| TermMatch::from_match(m)).collect(),
+            },
         }
     }
 
@@ -104,7 +128,10 @@ impl Term {
                     res = Term::eval(&env, Term::from_expr(&expr))?;
                     env.insert(name, res.clone());
                 }
-                Declaration::Type { name: _, constructors } => {
+                Declaration::Type {
+                    name: _,
+                    constructors,
+                } => {
                     for (ix, constructor) in constructors.into_iter().enumerate() {
                         env.insert(
                             constructor.name,
@@ -166,7 +193,7 @@ impl Term {
                     None => {
                         // warn!("{:?}", env);
                         Err(EvalError::UnknownVar(s))
-                    },
+                    }
                 },
             },
             Term::Lambda { binder, body } => Ok(Term::Closure {
@@ -202,6 +229,7 @@ impl Term {
                     values: evaled_values,
                 })
             }
+            Term::Case { expr, cases } => unreachable!(),
         }
     }
 
@@ -233,6 +261,7 @@ impl Term {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
+            Term::Case { expr, cases } => format!("match {} {{}}", expr),
         }
     }
 }

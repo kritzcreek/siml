@@ -1,5 +1,5 @@
 use crate::token::Token;
-use crate::expr::{Expr, ParserExpr, Literal, Declaration, DataConstructor};
+use crate::expr::{Expr, ParserExpr, Literal, Declaration, DataConstructor, Match};
 use crate::types::{Type};
 use crate::bi_types;
 
@@ -12,14 +12,18 @@ extern {
         "bool_literal" => Token::BooleanLiteral(<bool>),
         "forall" => Token::Forall,
         "let" => Token::Let,
-        "type" => Token::Type,
         "in" => Token::In,
+        "match" => Token::Match,
+        "type" => Token::Type,
         "=" => Token::Equals,
         "\\" => Token::Lambda,
         "(" => Token::LParen,
         ")" => Token::RParen,
+        "{" => Token::LBrace,
+        "}" => Token::RBrace,
         "." => Token::Dot,
         "->" => Token::Arrow,
+        "=>" => Token::FatArrow,
         ":" => Token::Colon,
         "," => Token::Comma,
         ";" => Token::Semi,
@@ -47,12 +51,19 @@ pub Expr: ParserExpr = {
         Expr::Lambda { binder: binder.to_string(), body: Box::new(body) },
     "let" <binder: "identifier"> "=" <expr: Expr> "in" <body: Expr> =>
         Expr::Let { binder: binder.to_string(), expr: Box::new(expr), body: Box::new(body) },
+    "match" <expr: Expr> "{" <cases: CommaSep<Match>> "}" =>
+        Expr::Case { expr: Box::new(expr), cases },
     <function: ExprAtom> <arguments: ExprAtom+> => {
         arguments
           .into_iter()
           .fold(function, |acc, x| Expr::App { func: Box::new(acc), arg: Box::new(x) })
     },
 }
+
+pub Match: Match<String> = {
+  <dtor: "identifier"> "=>" <expr: Expr> =>
+    Match { data_constructor: dtor, binders: vec![], expr }
+};
 
 ExprAtom: ParserExpr = {
     "identifier" => Expr::Var(<>.to_string()),

@@ -8,11 +8,15 @@ pub enum Token {
     Dot,
     LParen,
     RParen,
+    LBrace,
+    RBrace,
     Colon,
     Semi,
     Comma,
     Arrow,
+    FatArrow,
     Forall,
+    Match,
     Let,
     In,
     Type,
@@ -78,13 +82,22 @@ impl<'input> Iterator for Lexer<'input> {
     fn next(&mut self) -> Option<Token> {
         let token = match self.next_char() {
             Some('\\') => Some(Token::Lambda),
-            Some('=') => Some(Token::Equals),
             Some('.') => Some(Token::Dot),
             Some('(') => Some(Token::LParen),
             Some(')') => Some(Token::RParen),
+            Some('{') => Some(Token::LBrace),
+            Some('}') => Some(Token::RBrace),
             Some(':') => Some(Token::Colon),
             Some(';') => Some(Token::Semi),
             Some(',') => Some(Token::Comma),
+            Some('=') => {
+                if self.peek() == Some(&'>') {
+                    self.next();
+                    Some(Token::FatArrow)
+                } else {
+                    Some(Token::Equals)
+                }
+            }
             Some('-') => {
                 if self.peek() == Some(&'>') {
                     self.next();
@@ -119,6 +132,7 @@ impl<'input> Iterator for Lexer<'input> {
                     "forall" => Some(Token::Forall),
                     "let" => Some(Token::Let),
                     "in" => Some(Token::In),
+                    "match" => Some(Token::Match),
                     "type" => Some(Token::Type),
                     _ => Some(Token::Ident(res)),
                 }

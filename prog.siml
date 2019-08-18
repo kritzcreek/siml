@@ -45,3 +45,8 @@ type Day (Monday, Tuesday);
 type Color (Red, Green);
 let red : Color = Red;
 let green : Color = Green;
+
+let match_test : Int =
+  match red {
+    Red => 2,
+  };
