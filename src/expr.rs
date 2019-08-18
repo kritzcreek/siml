@@ -6,14 +6,20 @@ use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Declaration<B> {
-    Value {
-        name: String,
-        expr: Expr<B>,
-    },
-    Type {
-        name: String,
-        constructors: Vec<DataConstructor>,
-    },
+    Value(ValueDeclaration<B>),
+    Type(TypeDeclaration),
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct ValueDeclaration<B> {
+    pub name: String,
+    pub expr: Expr<B>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct TypeDeclaration {
+    pub name: String,
+    pub constructors: Vec<DataConstructor>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

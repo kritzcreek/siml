@@ -1,4 +1,4 @@
-use crate::expr::{Declaration, Expr, HasIdent, Literal, Match};
+use crate::expr::{Declaration, Expr, HasIdent, Literal, Match, TypeDeclaration};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -34,24 +34,104 @@ pub enum Term {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TermMatch {
-    pub data_constructor: String,
+    pub tag: u32,
     pub binders: Vec<String>,
     pub expr: Term,
-}
-
-impl TermMatch {
-    fn from_match<B: HasIdent>(match_: &Match<B>) -> TermMatch {
-        TermMatch {
-            data_constructor: match_.data_constructor.clone(),
-            binders: vec![],
-            expr: Term::from_expr(&match_.expr),
-        }
-    }
 }
 
 impl fmt::Display for Term {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.print())
+    }
+}
+
+struct Lowering {
+    /// Maps type names to constructor names
+    types: Vec<TypeDeclaration>,
+}
+
+impl Lowering {
+    pub fn new() -> Lowering {
+        Lowering { types: vec![] }
+    }
+
+    pub fn lower_prog<B: HasIdent>(mut self, prog: Vec<Declaration<B>>) -> Vec<(String, Term)> {
+        let values = {
+            let mut values = vec![];
+            for decl in prog {
+                match decl {
+                    Declaration::Value(v) => values.push(v),
+                    Declaration::Type(t) => self.types.push(t),
+                }
+            }
+            values
+        };
+        values
+            .into_iter()
+            .map(|value| (value.name, self.lower_expr(value.expr)))
+            .collect()
+    }
+
+    fn lower_expr<B: HasIdent>(&self, expr: Expr<B>) -> Term {
+        match expr {
+            Expr::App { func, arg } => Term::App {
+                func: Box::new(self.lower_expr(*func)),
+                arg: Box::new(self.lower_expr(*arg)),
+            },
+            Expr::Lambda { binder, body } => Term::Lambda {
+                binder: binder.ident(),
+                body: Box::new(self.lower_expr(*body)),
+            },
+            Expr::Let { binder, expr, body } => Term::App {
+                func: Box::new(Term::Lambda {
+                    binder: binder.ident(),
+                    body: Box::new(self.lower_expr(*body)),
+                }),
+                arg: Box::new(self.lower_expr(*expr)),
+            },
+            Expr::Var(s) => match self.tag_for_constructor(s.ident()) {
+                None => Term::Var(s.ident()),
+                Some(tag) => Term::Pack {
+                    tag,
+                    arity: 0,
+                    values: vec![],
+                },
+            },
+            Expr::Literal(lit) => Term::Literal(lit.clone()),
+            Expr::Ann { expr, ty: _ } => self.lower_expr(*expr),
+            Expr::Tuple(fst, snd) => Term::Pack {
+                tag: 1,
+                arity: 2,
+                values: vec![self.lower_expr(*fst), self.lower_expr(*snd)],
+            },
+            Expr::Case { expr, cases } => Term::Case {
+                expr: Box::new(self.lower_expr(*expr)),
+                cases: cases.into_iter().map(|m| self.lower_match(m)).collect(),
+            },
+        }
+    }
+
+    fn lower_match<B: HasIdent>(&self, match_: Match<B>) -> TermMatch {
+        TermMatch {
+            tag: self
+                .tag_for_constructor(match_.data_constructor)
+                .expect("Failed to find data constructor during lowering"),
+            binders: vec![],
+            expr: self.lower_expr(match_.expr),
+        }
+    }
+
+    fn tag_for_constructor(&self, ctor: String) -> Option<u32> {
+        let res = self.types.iter().find_map(|t| {
+            t.constructors.iter().enumerate().find_map(|(ix, c)| {
+                if c.name == ctor {
+                    Some(ix as u32)
+                } else {
+                    None
+                }
+            })
+        });
+        res
     }
 }
 
@@ -61,6 +141,8 @@ pub enum EvalError {
     ApplyingNonLambda(Term),
     AddingNonNumbers(Term, Term),
     ProjectingFst(Term),
+    MatchOnNonPack(Term),
+    FailedPatternMatch(Term),
 }
 
 impl EvalError {
@@ -74,6 +156,10 @@ impl EvalError {
             EvalError::ProjectingFst(term) => {
                 format!("Attempting to project from a non-tuple: {}", term)
             }
+            EvalError::MatchOnNonPack(term) => format!("Attempting to pattern match on: {}", term),
+            EvalError::FailedPatternMatch(term) => {
+                format!("Failed to find a matching pattern for: {}", term)
+            }
         }
     }
 }
@@ -83,67 +169,13 @@ fn initial_env() -> Env {
 }
 
 impl Term {
-    fn from_expr<B: HasIdent>(expr: &Expr<B>) -> Term {
-        match expr {
-            Expr::App { func, arg } => Term::App {
-                func: Box::new(Term::from_expr(func)),
-                arg: Box::new(Term::from_expr(arg)),
-            },
-            Expr::Lambda { binder, body } => Term::Lambda {
-                binder: binder.ident(),
-                body: Box::new(Term::from_expr(body)),
-            },
-            Expr::Let { binder, expr, body } => Term::App {
-                func: Box::new(Term::Lambda {
-                    binder: binder.ident(),
-                    body: Box::new(Term::from_expr(body)),
-                }),
-                arg: Box::new(Term::from_expr(expr)),
-            },
-            Expr::Var(s) => Term::Var(s.ident()),
-            Expr::Literal(lit) => Term::Literal(lit.clone()),
-            Expr::Ann { expr, ty: _ } => Term::from_expr(expr),
-            Expr::Tuple(fst, snd) => Term::Pack {
-                tag: 1,
-                arity: 2,
-                values: vec![Term::from_expr(fst), Term::from_expr(snd)],
-            },
-            Expr::Case { expr, cases } => Term::Case {
-                expr: Box::new(Term::from_expr(&expr)),
-                cases: cases.iter().map(|m| TermMatch::from_match(m)).collect(),
-            },
-        }
-    }
-
-    pub fn eval_expr<B: HasIdent>(expr: &Expr<B>) -> Result<Term, EvalError> {
-        Term::eval(&initial_env(), Term::from_expr(expr))
-    }
-
     pub fn eval_prog<B: HasIdent>(prog: Vec<Declaration<B>>) -> Result<Term, EvalError> {
+        let lowered = Lowering::new().lower_prog(prog);
         let mut env = initial_env();
         let mut res = Term::Var("nuttin".to_string());
-        for decl in prog {
-            match decl {
-                Declaration::Value { name, expr } => {
-                    res = Term::eval(&env, Term::from_expr(&expr))?;
-                    env.insert(name, res.clone());
-                }
-                Declaration::Type {
-                    name: _,
-                    constructors,
-                } => {
-                    for (ix, constructor) in constructors.into_iter().enumerate() {
-                        env.insert(
-                            constructor.name,
-                            Term::Pack {
-                                tag: ix as u32,
-                                arity: 0,
-                                values: vec![],
-                            },
-                        );
-                    }
-                }
-            }
+        for (name, term) in lowered {
+            res = Term::eval(&env, term)?;
+            env.insert(name, res.clone());
         }
         Ok(res)
     }
@@ -229,7 +261,30 @@ impl Term {
                     values: evaled_values,
                 })
             }
-            Term::Case { expr, cases } => unreachable!(),
+            Term::Case { expr, cases } => {
+                let evaled_expr = Term::eval(env, *expr)?;
+                match evaled_expr {
+                    Term::Pack {
+                        tag,
+                        arity: _,
+                        values: _,
+                    } => {
+                        let matched_case = cases.into_iter().find_map(|case| {
+                            if case.tag == tag {
+                                Some(case.expr)
+                            } else {
+                                None
+                            }
+                        });
+
+                        match matched_case {
+                            None => Err(EvalError::FailedPatternMatch(evaled_expr)),
+                            Some(term) => Term::eval(env, term),
+                        }
+                    }
+                    t => Err(EvalError::MatchOnNonPack(t)),
+                }
+            }
         }
     }
 

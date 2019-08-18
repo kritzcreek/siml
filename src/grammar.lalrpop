@@ -1,5 +1,5 @@
 use crate::token::Token;
-use crate::expr::{Expr, ParserExpr, Literal, Declaration, DataConstructor, Match};
+use crate::expr::*;
 use crate::types::{Type};
 use crate::bi_types;
 
@@ -36,9 +36,13 @@ pub Program: Vec<Declaration<String>> = {
 
 pub Declaration: Declaration<String> = {
  "let" <name: "identifier"> ":" <ty: BiType> "=" <expr: Expr> ";" =>
-   Declaration::Value{ expr: Expr::Ann { expr: Box::new(expr), ty }, name: name.to_string() },
+   Declaration::Value(
+     ValueDeclaration
+       { expr: Expr::Ann { expr: Box::new(expr), ty },
+         name: name.to_string()
+       }),
  "type" <name: "identifier"> "(" <constructors: CommaSep<DataConstructor>> ")" ";" =>
-   Declaration::Type { name: name.to_string(), constructors }
+   Declaration::Type(TypeDeclaration { name: name.to_string(), constructors })
 }
 
 DataConstructor: DataConstructor = {

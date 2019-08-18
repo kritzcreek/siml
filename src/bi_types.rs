@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 
-use crate::expr::{DataConstructor, Declaration, Expr, Literal, Match, ParserExpr, TypedExpr, Var};
+use crate::expr::{
+    DataConstructor, Declaration, Expr, Literal, Match, ParserExpr, TypeDeclaration, TypedExpr,
+    ValueDeclaration, Var,
+};
 use crate::pretty::render_doc;
 use pretty::{BoxDoc, Doc};
 use std::collections::HashSet;
@@ -1145,7 +1148,7 @@ impl TypeChecker {
                     },
                 ))
             }
-            Expr::Case{..} => unreachable!("TODO"),
+            Expr::Case { .. } => unreachable!("TODO"),
             Expr::Tuple(fst, snd) => {
                 let (ctx, fst_ty, typed_fst) = self.infer(ctx, fst)?;
                 let (ctx, snd_ty, typed_snd) = self.infer(ctx, snd)?;
@@ -1245,15 +1248,18 @@ impl TypeChecker {
 
         for decl in prog {
             match decl {
-                Declaration::Type { name, constructors } => {
+                Declaration::Type(TypeDeclaration { name, constructors }) => {
                     ctx.add_type(TypeDefinition {
                         name: name.clone(),
                         type_parameters: vec![],
                         constructors: constructors.clone(),
                     });
-                    result.push((Declaration::Type { name, constructors }, Type::int()))
+                    result.push((
+                        Declaration::Type(TypeDeclaration { name, constructors }),
+                        Type::int(),
+                    ))
                 }
-                Declaration::Value { name, expr } => {
+                Declaration::Value(ValueDeclaration { name, expr }) => {
                     debug!(
                         "Inferring declaration {}: \n=============================",
                         name
@@ -1263,10 +1269,10 @@ impl TypeChecker {
 
                     ctx = new_ctx;
                     result.push((
-                        Declaration::Value {
+                        Declaration::Value(ValueDeclaration {
                             name: name.clone(),
                             expr,
-                        },
+                        }),
                         ty,
                     ));
                 }

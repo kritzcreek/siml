@@ -1,5 +1,5 @@
 use crate::bi_types::Type;
-use crate::expr::{Declaration, Expr, HasIdent, Literal, TypedExpr, Var};
+use crate::expr::{Declaration, ValueDeclaration, Expr, HasIdent, Literal, TypedExpr, Var};
 use std::collections::{HashMap, HashSet};
 
 pub struct Codegen {
@@ -26,7 +26,7 @@ impl Codegen {
         let mut index_supply: u32 = 0;
         let mut global_names = HashMap::new();
         for decl in prog {
-            if let (Declaration::Value { name, expr: _ }, ty) = decl {
+            if let (Declaration::Value(ValueDeclaration { name, expr: _ }), ty) = decl {
                 global_names.insert(name.to_string(), (index_supply, ty.clone()));
                 index_supply += 1;
             }
@@ -40,7 +40,7 @@ impl Codegen {
         self.function_table();
         self.rts();
         for decl in prog {
-            if let (Declaration::Value { name, expr }, ty) = decl {
+            if let (Declaration::Value(ValueDeclaration { name, expr }), ty) = decl {
                 self.fun(name, expr, ty);
             }
         }

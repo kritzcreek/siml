@@ -42,8 +42,9 @@ pub fn run_expr(expr: ParserExpr) {
     let mut type_checker = types::TypeChecker::new();
     let ty_res = type_checker.infer_expr(&expr);
     info!("Inferred: {}", print_ty_res(ty_res));
-    let eval_res = Term::eval_expr(&expr);
-    info!("Evaled: {}", print_eval_res(eval_res));
+    // TODO Either restore eval_expr, or make this into an eval_prog call
+    // let eval_res = Term::eval_expr(&expr);
+    // info!("Evaled: {}", print_eval_res(eval_res));
 }
 
 pub fn run_term(input: &str) {

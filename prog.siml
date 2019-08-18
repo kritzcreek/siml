@@ -47,6 +47,7 @@ let red : Color = Red;
 let green : Color = Green;
 
 let match_test : Int =
-  match red {
+  match green {
     Red => 2,
+    Green => 3,
   };
