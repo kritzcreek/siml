@@ -46,7 +46,7 @@ impl fmt::Display for Term {
 }
 
 struct Lowering {
-    /// Maps type names to constructor names
+    /// All the type declaration in the to-be-lowered program
     types: Vec<TypeDeclaration>,
 }
 
@@ -56,16 +56,13 @@ impl Lowering {
     }
 
     pub fn lower_prog<B: HasIdent>(mut self, prog: Vec<Declaration<B>>) -> Vec<(String, Term)> {
-        let values = {
-            let mut values = vec![];
-            for decl in prog {
-                match decl {
-                    Declaration::Value(v) => values.push(v),
-                    Declaration::Type(t) => self.types.push(t),
-                }
+        let mut values = vec![];
+        for decl in prog {
+            match decl {
+                Declaration::Value(v) => values.push(v),
+                Declaration::Type(t) => self.types.push(t),
             }
-            values
-        };
+        }
         values
             .into_iter()
             .map(|value| (value.name, self.lower_expr(value.expr)))
@@ -102,7 +99,7 @@ impl Lowering {
             Expr::Tuple(fst, snd) => Term::Pack {
                 tag: 1,
                 arity: 2,
-                values: vec![self.lower_expr(*fst), self.lower_expr(*snd)],
+                values: vec![ self.lower_expr(*fst), self.lower_expr(*snd) ],
             },
             Expr::Case { expr, cases } => Term::Case {
                 expr: Box::new(self.lower_expr(*expr)),
@@ -219,7 +216,6 @@ impl Term {
                     }),
                     _ => panic!("Bad implementation for fst"),
                 },
-
                 _ => match env.get(&s) {
                     Some(t) => Ok(t.clone()),
                     None => {

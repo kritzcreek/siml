@@ -108,6 +108,15 @@ impl<B> Match<B> {
         res
     }
 
+    pub fn subst_mut(&mut self, var: &String, replacement: &Expr<B>)
+    where
+        B: HasIdent + Clone,
+    {
+        if !self.binders.iter().any(|binder| var == &binder.ident()) {
+            self.expr.subst_mut(var, replacement)
+        }
+    }
+
     pub fn to_doc(&self) -> Doc<BoxDoc<()>>
     where
         B: HasIdent,
@@ -122,6 +131,14 @@ impl<B> Match<B> {
             .append(Doc::text("=>"))
             .append(Doc::space())
             .append(self.expr.to_doc())
+    }
+}
+
+impl Match<Var> {
+    pub fn subst_var_mut(&mut self, var: &String, replacement: &String) {
+        if !self.binders.iter().any(|binder| var == &binder.name) {
+            self.expr.subst_var_mut(var, replacement)
+        }
     }
 }
 
@@ -305,14 +322,18 @@ impl<B> Expr<B> {
         B: HasIdent + Clone,
     {
         match self {
-            Expr::Var(v) if var == &v.ident() => {
-                *self = replacement.clone();
+            Expr::Var(v) => {
+                if var == &v.ident() {
+                    *self = replacement.clone();
+                }
             }
             Expr::Ann { expr, .. } => {
                 expr.subst_mut(var, replacement);
             }
-            Expr::Lambda { binder, body } if var != &binder.ident() => {
-                body.subst_mut(var, replacement);
+            Expr::Lambda { binder, body } => {
+                if var != &binder.ident() {
+                    body.subst_mut(var, replacement);
+                }
             }
             Expr::Let { binder, expr, body } => {
                 expr.subst_mut(var, replacement);
@@ -328,7 +349,13 @@ impl<B> Expr<B> {
                 fst.subst_mut(var, replacement);
                 snd.subst_mut(var, replacement);
             }
-            _ => {}
+            Expr::Case { expr, cases } => {
+                expr.subst_mut(var, replacement);
+                for case in cases {
+                    case.subst_mut(var, replacement);
+                }
+            }
+            Expr::Literal(_) => {}
         }
     }
 
@@ -418,17 +445,21 @@ impl TypedExpr {
 
     pub fn subst_var_mut(&mut self, var: &String, replacement: &String) {
         match self {
-            Expr::Var(v) if var == &v.name => {
-                *self = Expr::Var(Var {
-                    name: replacement.clone(),
-                    ty: v.ty.clone(),
-                })
+            Expr::Var(v) => {
+                if var == &v.name {
+                    *self = Expr::Var(Var {
+                        name: replacement.clone(),
+                        ty: v.ty.clone(),
+                    })
+                }
             }
             Expr::Ann { expr, .. } => {
                 expr.subst_var_mut(var, replacement);
             }
-            Expr::Lambda { binder, body } if var != &binder.name => {
-                body.subst_var_mut(var, replacement);
+            Expr::Lambda { binder, body } => {
+                if var != &binder.name {
+                    body.subst_var_mut(var, replacement);
+                }
             }
             Expr::Let { binder, expr, body } => {
                 expr.subst_var_mut(var, replacement);
@@ -444,7 +475,13 @@ impl TypedExpr {
                 fst.subst_var_mut(&var, replacement);
                 snd.subst_var_mut(var, replacement);
             }
-            _ => {}
+            Expr::Case{ expr, cases } => {
+                expr.subst_var_mut(&var, replacement);
+                for case in cases {
+                    case.subst_var_mut(&var, replacement);
+                }
+            }
+            Expr::Literal(_) => {}
         }
     }
 }
