@@ -41,13 +41,19 @@ let main : Int =
 let tuple_test : Int =
   fst (\x. x, true) (snd (snd (true, (true, 2))));
 
-type Day (Monday, Tuesday);
+type Day (Monday, Tuesday, Wednesday, Thursday, Friday);
+
 type Color (Red, Green);
 let red : Color = Red;
 let green : Color = Green;
 
 let match_test : Int =
-  match green {
-    Red => 2,
-    Green => 3,
-  };
+  let day_of_week =
+    \day. match day {
+      Monday => 1,
+      Tuesday => 2,
+      Wednesday => 3,
+      Thursday => 4,
+      Friday => 5,
+    } in
+  day_of_week Wednesday;

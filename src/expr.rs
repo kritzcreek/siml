@@ -142,7 +142,7 @@ impl Match<Var> {
     }
 }
 
-/// The AST for expressions. It's parameterized over it's variable
+/// The AST for expressions. It's parameterized over its variable
 /// names. This is done so the type checker can insert type
 /// information on every variable.
 #[derive(Debug, PartialEq, Eq, Clone)]

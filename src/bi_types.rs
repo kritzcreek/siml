@@ -262,6 +262,9 @@ impl Context {
         self.elems
             .iter()
             .for_each(|ce| res += &format!("  {},\n", &ce));
+        self.types
+            .iter()
+            .for_each(|ty| res += &format!("  {},\n", &ty.name));
         res += "}";
         res
     }
@@ -304,7 +307,10 @@ impl Context {
                 new_elems.extend_from_slice(before);
                 new_elems.extend(elems.into_iter());
                 new_elems.extend_from_slice(after);
-                Context::new(new_elems)
+                Context {
+                    elems: new_elems,
+                    types: self.types.clone(),
+                }
             }
             None => unreachable!(),
         }
@@ -318,9 +324,10 @@ impl Context {
     }
 
     fn break_marker(&self, marker: ContextElem) -> (Vec<ContextElem>, Vec<ContextElem>) {
-        let (before_marker, after_marker) = self
-            .split_at(&marker)
-            .expect("breaking non-existent marker");
+        let (before_marker, after_marker) = self.split_at(&marker).expect(&format!(
+            "breaking non-existent marker: {} {}",
+            self, marker
+        ));
         (
             before_marker.to_vec(),
             after_marker.split_first().unwrap().1.to_vec(),
@@ -394,7 +401,10 @@ impl Context {
     /// solve (ΓL,α^,ΓR) α τ = (ΓL,α = τ,ΓR)
     fn solve(&self, ex: &String, ty: Type) -> Option<Context> {
         let (gamma_l, gamma_r) = self.break_marker(ContextElem::ExVar(ex.clone()));
-        let mut ctx = Context::new(gamma_l);
+        let mut ctx = Context {
+            elems: gamma_l,
+            types: self.types.clone(),
+        };
         if ctx.wf_type(&ty) {
             ctx.push(ContextElem::ExVarSolved(ex.clone(), ty));
             ctx.push_elems(gamma_r);
@@ -679,6 +689,11 @@ impl TypeChecker {
                 let snd1 = tmp_ctx.apply(snd1);
                 let snd2 = tmp_ctx.apply(snd2);
                 self.unify(tmp_ctx, &snd1, &snd2)
+            }
+            (Type::Existential(ex1), Type::Existential(ex2))
+                if ctx.existentials_ordered(ex1, ex2) =>
+            {
+                Ok(ctx.solve(ex2, Type::Existential(ex1.clone())).unwrap())
             }
             (Type::Existential(ex), ty) => self.var_bind(ctx, ex, ty),
             (ty, Type::Existential(ex)) => self.var_bind(ctx, ex, ty),
@@ -1002,6 +1017,7 @@ impl TypeChecker {
                 let (mut ctx, ty_expr, typed_expr) = self.infer(ctx, expr)?;
                 let mut typed_cases = vec![];
                 for case in cases.iter() {
+                    let ty_expr = &ctx.apply(&ty_expr);
                     let (new_ctx, typed_case) = self.check_case(ctx, case, &ty_expr, ty)?;
                     ctx = new_ctx;
                     typed_cases.push(typed_case);
@@ -1148,7 +1164,28 @@ impl TypeChecker {
                     },
                 ))
             }
-            Expr::Case { .. } => unreachable!("TODO"),
+            Expr::Case { expr, cases } => {
+                let (ctx, ty_expr, typed_expr) = self.infer(ctx, expr)?;
+
+                let mut cases_iter = cases.iter();
+                let (mut ctx, ty_case, typed_case) =
+                    self.infer_case(ctx, cases_iter.next().unwrap(), &ty_expr)?;
+                let ty_res = ty_case;
+                let mut typed_cases = vec![typed_case];
+                for case in cases_iter {
+                    let (new_ctx, typed_case) = self.check_case(ctx, case, &ty_expr, &ty_res)?;
+                    ctx = new_ctx;
+                    typed_cases.push(typed_case);
+                }
+                Ok((
+                    ctx,
+                    ty_res,
+                    Expr::Case {
+                        expr: Box::new(typed_expr),
+                        cases: typed_cases,
+                    },
+                ))
+            }
             Expr::Tuple(fst, snd) => {
                 let (ctx, fst_ty, typed_fst) = self.infer(ctx, fst)?;
                 let (ctx, snd_ty, typed_snd) = self.infer(ctx, snd)?;
@@ -1159,6 +1196,40 @@ impl TypeChecker {
                 ))
             }
         }
+    }
+
+    fn infer_case(
+        &mut self,
+        ctx: Context,
+        case: &Match<String>,
+        ty_match: &Type,
+    ) -> Result<(Context, Type, Match<Var>), TypeError> {
+        // Ignoring binders for now
+        let ty_dtor: Type;
+        match ctx.find_var(&case.data_constructor) {
+            None => {
+                return Err(TypeError::UnknownDataConstructor(
+                    case.data_constructor.clone(),
+                ));
+            }
+            Some(dtor) => {
+                ty_dtor = dtor;
+            }
+        }
+
+        let ctx = self.unify(ctx, &ty_dtor, ty_match)?;
+        let (ctx, ty_expr, typed_expr) = self.infer(ctx, &case.expr)?;
+
+        Ok((
+            ctx,
+            ty_expr,
+            Match {
+                data_constructor: case.data_constructor.clone(),
+                // TODO
+                binders: vec![],
+                expr: typed_expr,
+            },
+        ))
     }
 
     fn infer_application(

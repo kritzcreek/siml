@@ -46,7 +46,7 @@ impl fmt::Display for Term {
 }
 
 struct Lowering {
-    /// All the type declaration in the to-be-lowered program
+    /// All type declarations in the to-be-lowered program
     types: Vec<TypeDeclaration>,
 }
 
@@ -99,7 +99,7 @@ impl Lowering {
             Expr::Tuple(fst, snd) => Term::Pack {
                 tag: 1,
                 arity: 2,
-                values: vec![ self.lower_expr(*fst), self.lower_expr(*snd) ],
+                values: vec![self.lower_expr(*fst), self.lower_expr(*snd)],
             },
             Expr::Case { expr, cases } => Term::Case {
                 expr: Box::new(self.lower_expr(*expr)),
