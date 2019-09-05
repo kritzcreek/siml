@@ -93,6 +93,25 @@ pub fn run_program(input: &str) {
         }
     }
 }
+pub fn run_wasm_program(input: &str) {
+    let lexer = token::Lexer::new(input);
+    let res = grammar::ProgramParser::new().parse(lexer);
+    match res {
+        Err(err) => error!("Parse failure: {:?}", err),
+        Ok(prog) => {
+            let mut type_checker = bi_types::TypeChecker::new();
+            match type_checker.synth_prog(prog.clone()) {
+                Err(err) => {
+                    error!("{}", err.print());
+                }
+                Ok(tys) => {
+                    info!("Codegen:");
+                    wasm::test_wasm(tys);
+                }
+            };
+        }
+    }
+}
 
 pub fn run() {
     // `()` can be used when no completer is required

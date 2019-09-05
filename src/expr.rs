@@ -25,6 +25,7 @@ pub struct TypeDeclaration {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct DataConstructor {
     pub name: String,
+    pub fields: Vec<Type>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -475,7 +476,7 @@ impl TypedExpr {
                 fst.subst_var_mut(&var, replacement);
                 snd.subst_var_mut(var, replacement);
             }
-            Expr::Case{ expr, cases } => {
+            Expr::Case { expr, cases } => {
                 expr.subst_var_mut(&var, replacement);
                 for case in cases {
                     case.subst_var_mut(&var, replacement);

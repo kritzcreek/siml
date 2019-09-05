@@ -46,7 +46,7 @@ pub Declaration: Declaration<String> = {
 }
 
 DataConstructor: DataConstructor = {
-  <name: "identifier"> => DataConstructor { name: name.to_string() }
+  <name: "identifier"> <fields: BiType*> => DataConstructor { name: name.to_string(), fields }
 }
 
 pub Expr: ParserExpr = {

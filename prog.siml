@@ -42,8 +42,10 @@ let tuple_test : Int =
   fst (\x. x, true) (snd (snd (true, (true, 2))));
 
 type Day (Monday, Tuesday, Wednesday, Thursday, Friday);
-
 type Color (Red, Green);
+
+type Location (Loc Int Int);
+
 let red : Color = Red;
 let green : Color = Green;
 

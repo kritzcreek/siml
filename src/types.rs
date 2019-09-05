@@ -468,7 +468,7 @@ impl TypeChecker {
                 let s = s2.compose(s1);
                 (Type::Tuple(Box::new(ty_fst), Box::new(ty_snd)), s)
             }
-            Expr::Case{..} => unreachable!("TODO"),
+            Expr::Case { .. } => unreachable!("TODO"),
             Expr::Literal(Literal::Int(_)) => (Type::Int, Substitution::new()),
             Expr::Literal(Literal::Bool(_)) => (Type::Bool, Substitution::new()),
         }

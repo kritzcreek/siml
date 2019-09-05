@@ -46,17 +46,42 @@ fn watch_file() -> notify::Result<()> {
         }
     }
 }
+fn watch_wasm_file() -> notify::Result<()> {
+    let (tx, rx) = channel();
+    let mut watcher: RecommendedWatcher = Watcher::new(tx, Duration::from_secs(2))?;
+    watcher.watch("wasm_prog.siml", RecursiveMode::Recursive)?;
+    loop {
+        match rx.recv() {
+            Ok(DebouncedEvent::Write(_)) => run_wasm_file(),
+            Ok(DebouncedEvent::Create(_)) => run_wasm_file(),
+            Ok(_ev) => {
+                // Uncomment if you want to debug watcher failures
+                // println!("{:?}", _ev)
+            }
+            Err(e) => println!("watch error: {:?}", e),
+        }
+    }
+}
 
 fn run_file() {
     let source_file = fs::read_to_string("prog.siml").expect("Failed to read the source file.");
     repl::run_program(&source_file)
 }
+fn run_wasm_file() {
+    let source_file =
+        fs::read_to_string("wasm_prog.siml").expect("Failed to read the source file.");
+    repl::run_wasm_program(&source_file)
+}
 
 fn main() {
     setup_logger();
-    run_file();
+    //    run_file();
+    run_wasm_file();
+    //    thread::spawn(move || {
+    //        watch_file().expect("File watcher failed");
+    //    });
     thread::spawn(move || {
-        watch_file().expect("File watcher failed");
+        watch_wasm_file().expect("WASM File watcher failed");
     });
     loop {
         thread::sleep(Duration::from_secs(2))

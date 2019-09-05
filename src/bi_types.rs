@@ -153,7 +153,7 @@ impl Type {
         Type::Existential(str.to_string())
     }
 
-    fn fun(arg: Type, result: Type) -> Self {
+    pub fn fun(arg: Type, result: Type) -> Self {
         Type::Fun {
             arg: Box::new(arg),
             result: Box::new(result),
@@ -230,12 +230,18 @@ impl Type {
 pub struct TypeDefinition {
     name: String,
     type_parameters: Vec<String>,
-    constructors: Vec<DataConstructor>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct DataConstructorDefinition {
+    name: String,
+    ty: Type,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Context {
     types: Vec<TypeDefinition>,
+    data_constructors: Vec<DataConstructorDefinition>,
     elems: Vec<ContextElem>,
 }
 
@@ -249,12 +255,24 @@ impl Context {
     pub fn new(elems: Vec<ContextElem>) -> Context {
         Context {
             types: vec![],
+            data_constructors: vec![],
             elems,
         }
     }
 
     pub fn add_type(&mut self, type_def: TypeDefinition) {
         self.types.push(type_def);
+    }
+
+    pub fn add_constructor(&mut self, ret_ty: Type, data_constructor: DataConstructor) {
+        let dtor_def = DataConstructorDefinition {
+            name: data_constructor.name,
+            ty: data_constructor
+                .fields
+                .into_iter()
+                .fold(ret_ty, |acc, ty| Type::fun(ty, acc)),
+        };
+        self.data_constructors.push(dtor_def)
     }
 
     pub fn print(&self) -> String {
@@ -310,6 +328,7 @@ impl Context {
                 Context {
                     elems: new_elems,
                     types: self.types.clone(),
+                    data_constructors: self.data_constructors.clone(),
                 }
             }
             None => unreachable!(),
@@ -387,11 +406,9 @@ impl Context {
             }
         }
 
-        for type_def in self.types.iter() {
-            for dtor in type_def.constructors.iter() {
-                if dtor.name == *var {
-                    return Some(Type::Constructor(type_def.name.clone()));
-                }
+        for dtor in self.data_constructors.iter() {
+            if dtor.name == *var {
+                return Some(dtor.ty.clone());
             }
         }
 
@@ -404,6 +421,7 @@ impl Context {
         let mut ctx = Context {
             elems: gamma_l,
             types: self.types.clone(),
+            data_constructors: self.data_constructors.clone(),
         };
         if ctx.wf_type(&ty) {
             ctx.push(ContextElem::ExVarSolved(ex.clone(), ty));
@@ -429,6 +447,7 @@ impl Context {
         tmp_elems.extend(vars.iter().map(|v| ContextElem::Universal(v.clone())));
         let tmp_ctx = Context {
             types: self.types.clone(),
+            data_constructors: self.data_constructors.clone(),
             elems: tmp_elems,
         };
 
@@ -927,13 +946,13 @@ impl TypeChecker {
         }
 
         let ctx = self.unify(ctx, &ty_dtor, ty_match)?;
+        // TODO bring binders into scope here
         let (ctx, typed_expr) = self.check(ctx, &case.expr, ty)?;
 
         Ok((
             ctx,
             Match {
                 data_constructor: case.data_constructor.clone(),
-                // TODO
                 binders: vec![],
                 expr: typed_expr,
             },
@@ -1323,8 +1342,10 @@ impl TypeChecker {
                     ctx.add_type(TypeDefinition {
                         name: name.clone(),
                         type_parameters: vec![],
-                        constructors: constructors.clone(),
                     });
+                    for constructor in &constructors {
+                        ctx.add_constructor(Type::Constructor(name.clone()), constructor.clone())
+                    }
                     result.push((
                         Declaration::Type(TypeDeclaration { name, constructors }),
                         Type::int(),

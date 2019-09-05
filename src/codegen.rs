@@ -1,5 +1,5 @@
 use crate::bi_types::Type;
-use crate::expr::{Declaration, ValueDeclaration, Expr, HasIdent, Literal, TypedExpr, Var};
+use crate::expr::{Declaration, Expr, HasIdent, Literal, TypedExpr, ValueDeclaration, Var};
 use std::collections::{HashMap, HashSet};
 
 pub struct Codegen {
@@ -22,6 +22,10 @@ impl Codegen {
         format!("{}{}", s, self.supply)
     }
 
+    fn fresh_top_name(&mut self) -> String {
+        self.fresh_name("$".to_owned())
+    }
+
     fn populate_global_names(&mut self, prog: &Vec<(Declaration<Var>, Type)>) {
         let mut index_supply: u32 = 0;
         let mut global_names = HashMap::new();
@@ -37,14 +41,23 @@ impl Codegen {
     pub fn codegen(mut self, prog: &Vec<(Declaration<Var>, Type)>) -> String {
         self.populate_global_names(prog);
         self.out += "(module\n";
-        self.function_table();
         self.rts();
         for decl in prog {
             if let (Declaration::Value(ValueDeclaration { name, expr }), ty) = decl {
-                self.fun(name, expr, ty);
+                let (expr, decls) = self.lambda_lift(expr.clone());
+                let start_size = self.global_names.len();
+                for (ix, (decl, ty)) in decls.iter().enumerate() {
+                    self.global_names
+                        .insert(decl.name.clone(), ((start_size + ix) as u32, ty.clone()));
+                }
+                for (decl, ty) in decls {
+                    self.fun(&decl.name, &decl.expr, &ty)
+                }
+                self.fun(name, &expr, ty);
             }
         }
         self.entry_point();
+        self.function_table();
         self.out += "\n)";
         return self.out;
     }
@@ -52,6 +65,82 @@ impl Codegen {
     fn rts(&mut self) {
         self.out += ALLOCATOR_RTS;
         self.out += CLOSURE_RTS;
+    }
+
+    pub fn lambda_lift(&mut self, expr: TypedExpr) -> (TypedExpr, Vec<(ValueDeclaration<Var>, Type)>) {
+        match expr {
+            Expr::Var(_) => (expr, vec![]),
+            Expr::Literal(_) => (expr, vec![]),
+            Expr::App { func, arg } => {
+                let (lifted_func, mut d1) = self.lambda_lift(*func);
+                let (lifted_arg, d2) = self.lambda_lift(*arg);
+                d1.extend(d2);
+                (
+                    Expr::App {
+                        func: Box::new(lifted_func),
+                        arg: Box::new(lifted_arg),
+                    },
+                    d1,
+                )
+            }
+            Expr::Ann { ty, expr } => {
+                let (lifted_expr, ds) = self.lambda_lift(*expr);
+                (
+                    Expr::Ann {
+                        ty,
+                        expr: Box::new(lifted_expr),
+                    },
+                    ds,
+                )
+            }
+            Expr::Let { binder, expr, body } => {
+                let (lifted_expr, mut d1) = self.lambda_lift(*expr);
+                let (lifted_body, d2) = self.lambda_lift(*body);
+                d1.extend(d2);
+                (
+                    Expr::Let {
+                        binder,
+                        expr: Box::new(lifted_expr),
+                        body: Box::new(lifted_body),
+                    },
+                    d1,
+                )
+            }
+            Expr::Lambda { .. } => {
+                // TODO Write a moving implementation for collapse_lambdas
+                let (binders, body) = expr.collapse_lambdas();
+                let binder_count = binders.len();
+                let fresh_name = self.fresh_top_name();
+                let (lifted_body, mut ds) = self.lambda_lift(body.clone());
+                let value_decl = ValueDeclaration {
+                    name: fresh_name.clone(),
+                    expr: binders
+                        .into_iter()
+                        .rev()
+                        .fold(lifted_body, |e, b| Expr::Lambda {
+                            binder: b.clone(),
+                            body: Box::new(e),
+                        }),
+                };
+
+                let ty =
+                    std::iter::repeat(Type::int())
+                    .take(4)
+                    .fold(Type::int(), |acc, ty| Type::fun(ty, acc));
+
+                ds.push((value_decl, ty.clone()));
+                (
+                    // TODO Figure out the actual type here
+                    Expr::Var(Var {
+                        name: fresh_name,
+                        ty,
+                    }),
+                    ds,
+                )
+            }
+            Expr::Case { .. } => panic!("Not implemented lambda lifting for case"),
+            Expr::Tuple { .. } => panic!("Not implemented lambda lifting for tuple"),
+        }
     }
 
     pub fn let_lift(&mut self, expr: TypedExpr) -> (TypedExpr, HashSet<String>) {
@@ -101,7 +190,7 @@ impl Codegen {
                 ty,
             },
             Expr::Tuple(..) => unreachable!("TODO: Tuple"),
-            Expr::Case{..} => unreachable!("TODO: Tuple"),
+            Expr::Case { .. } => unreachable!("TODO: Tuple"),
         }
     }
 
@@ -289,5 +378,18 @@ mod tests {
             names,
             HashSet::from_iter(vec!["hello1".to_string(), "hello".to_string()].into_iter())
         );
+    }
+
+    #[test]
+    fn lambda_lifting() {
+        let my_expr = expr("(\\x. add 1 ((\\y. \\x. add y x) 4 6)) ((\\x. x) 3)");
+
+        let mut cg = Codegen::new();
+        let (lifted, ds) = cg.lambda_lift(my_expr);
+        println!("{}", lifted);
+        for (vd, _) in ds {
+            println!("{} = {}", vd.name, vd.expr);
+        }
+        assert!(false);
     }
 }
