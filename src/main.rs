@@ -6,7 +6,7 @@ extern crate siml;
 use fern::colors::{Color, ColoredLevelConfig};
 use notify::DebouncedEvent;
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
-use siml::repl;
+use siml::pipeline;
 use std::fs;
 use std::sync::mpsc::channel;
 use std::thread;
@@ -65,12 +65,15 @@ fn watch_wasm_file() -> notify::Result<()> {
 
 fn run_file() {
     let source_file = fs::read_to_string("prog.siml").expect("Failed to read the source file.");
-    repl::run_program(&source_file)
+    let res = pipeline::run_program(&source_file, pipeline::Backend::Term);
+    println!("{:?}", res)
 }
+
 fn run_wasm_file() {
     let source_file =
         fs::read_to_string("wasm_prog.siml").expect("Failed to read the source file.");
-    repl::run_wasm_program(&source_file)
+    let res = pipeline::run_program(&source_file, pipeline::Backend::Wasm);
+    println!("{:?}", res)
 }
 
 fn main() {

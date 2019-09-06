@@ -1,10 +1,8 @@
 use crate::bi_types::{Type, TypeChecker, TypeError};
-use crate::codegen::Codegen;
 use crate::grammar;
 use crate::term;
 use crate::term::Term;
 use crate::token;
-use crate::wasm;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
@@ -34,57 +32,6 @@ pub fn run_term(input: &str) {
             info!("Inferred: {}", print_ty_res(ty_res));
             let eval_res = Term::eval_expr(expr);
             info!("Evaled: {}", print_eval_res(eval_res));
-        }
-    }
-}
-
-pub fn run_program(input: &str) {
-    let lexer = token::Lexer::new(input);
-    let res = grammar::ProgramParser::new().parse(lexer);
-    match res {
-        Err(err) => error!("Parse failure: {:?}", err),
-        Ok(prog) => {
-            let mut type_checker = TypeChecker::new();
-            match type_checker.synth_prog(prog.clone()) {
-                Err(err) => {
-                    error!("{}", err.print());
-                    info!("Trying interpreter anyway:");
-                    let eval_result = Term::eval_prog(prog);
-                    info!("{}", print_eval_res(eval_result));
-                }
-                Ok(tys) => {
-                    info!("Running interpreter:");
-                    let eval_result = Term::eval_prog(tys.into_iter().map(|(e, _)| e).collect());
-                    info!("{}", print_eval_res(eval_result));
-                }
-            };
-        }
-    }
-}
-
-pub fn run_wasm_program(input: &str) {
-    let lexer = token::Lexer::new(input);
-    let res = grammar::ProgramParser::new().parse(lexer);
-    match res {
-        Err(err) => error!("Parse failure: {:?}", err),
-        Ok(prog) => {
-            let mut type_checker = TypeChecker::new();
-            match type_checker.synth_prog(prog.clone()) {
-                Err(err) => {
-                    error!("{}", err.print());
-                }
-                Ok(tys) => {
-                    info!("Codegen:");
-                    match Codegen::new().codegen(&tys) {
-                        Err(err) => error!("{}", err),
-                        Ok(prog) => {
-                            info!("Generated WAT:\n{}", prog);
-                            let wasm_res = wasm::run_wasm(prog);
-                            info!("WASM result:\n{}", wasm::pretty_result(wasm_res));
-                        }
-                    }
-                }
-            };
         }
     }
 }

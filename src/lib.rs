@@ -7,6 +7,7 @@ pub mod codegen;
 pub mod eval;
 pub mod expr;
 pub mod grammar;
+pub mod pipeline;
 pub mod pretty;
 pub mod repl;
 pub mod term;
