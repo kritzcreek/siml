@@ -11,5 +11,5 @@ pub mod pretty;
 pub mod repl;
 pub mod term;
 pub mod token;
-mod wasm;
+pub mod wasm;
 // pub mod ir; // implement closure conversion here

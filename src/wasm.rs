@@ -1,40 +1,28 @@
 extern crate wabt;
 extern crate wasmi;
-use crate::bi_types::Type;
-use crate::codegen::*;
-use crate::expr::{Declaration, Var};
 use wasmi::{ImportsBuilder, ModuleInstance, NopExternals};
 
-pub fn test_wasm(prog: Vec<(Declaration<Var>, Type)>) {
-    // let contents =
-    //     fs::read_to_string("src/prog.wat").expect("Something went wrong reading the file");
-
-    let contents = Codegen::new().codegen(&prog);
-
-    info!("[wasm] {}", contents);
-
+pub fn run_wasm(prog: String) -> Result<Option<wasmi::RuntimeValue>, wasmi::Error> {
     // Parse WAT (WebAssembly Text format) into wasm bytecode.
-    let wasm_binary: Vec<u8> = match wabt::wat2wasm(contents) {
-        Err(err) => {
-            println!("{}", err);
-            panic!("failed to parse wat")
-        }
-        Ok(wasm) => wasm,
-    };
+    let wasm_binary: Vec<u8> =
+        wabt::wat2wasm(prog).map_err(|err| wasmi::Error::Validation(format!("{}", err)))?;
 
     // Load wasm binary and prepare it for instantiation.
-    let module = wasmi::Module::from_buffer(&wasm_binary).expect("failed to load wasm");
+    let module = wasmi::Module::from_buffer(&wasm_binary)?;
 
-    // Instantiate a module with empty imports and
-    // assert that there is no `start` function.
-    let instance = ModuleInstance::new(&module, &ImportsBuilder::default())
-        .expect("failed to instantiate wasm module")
-        .assert_no_start();
+    // Instantiate a module with empty imports
+    let instance = ModuleInstance::new(&module, &ImportsBuilder::default())?;
 
-    println!(
-        "{:?}",
-        instance
-            .invoke_export("main", &[], &mut NopExternals,)
-            .expect("failed to execute export")
-    );
+    // Assert that there is no `start` function.
+    instance
+        .assert_no_start()
+        .invoke_export("main", &[], &mut NopExternals)
+}
+
+pub fn pretty_result(res: Result<Option<wasmi::RuntimeValue>, wasmi::Error>) -> String {
+    match res {
+        Err(err) => format!("{}", err),
+        Ok(None) => "Failed to evaluate wasm".to_string(),
+        Ok(Some(val)) => format!("{:?}", val),
+    }
 }

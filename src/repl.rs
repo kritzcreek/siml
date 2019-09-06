@@ -1,4 +1,5 @@
 use crate::bi_types::{Type, TypeChecker, TypeError};
+use crate::codegen::Codegen;
 use crate::grammar;
 use crate::term;
 use crate::term::Term;
@@ -55,8 +56,6 @@ pub fn run_program(input: &str) {
                     info!("Running interpreter:");
                     let eval_result = Term::eval_prog(tys.into_iter().map(|(e, _)| e).collect());
                     info!("{}", print_eval_res(eval_result));
-                    // info!("Running WASM backend:");
-                    // wasm::test_wasm(tys);
                 }
             };
         }
@@ -76,7 +75,10 @@ pub fn run_wasm_program(input: &str) {
                 }
                 Ok(tys) => {
                     info!("Codegen:");
-                    wasm::test_wasm(tys);
+                    let prog = Codegen::new().codegen(&tys);
+                    info!("Generated WAT:\n{}", prog);
+                    let wasm_res = wasm::run_wasm(prog);
+                    info!("WASM result:\n{}", wasm::pretty_result(wasm_res));
                 }
             };
         }
