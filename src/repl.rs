@@ -4,21 +4,9 @@ use crate::grammar;
 use crate::term;
 use crate::term::Term;
 use crate::token;
-use crate::types;
 use crate::wasm;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
-
-fn print_ty_res(ty_res: Result<types::Type, Vec<types::TypeError>>) -> String {
-    match ty_res {
-        Err(errs) => errs
-            .into_iter()
-            .map(|err| err.print())
-            .collect::<Vec<String>>()
-            .join("\n"),
-        Ok(ty) => ty.print(),
-    }
-}
 
 fn print_bi_ty_res(ty_res: Result<bi_types::Type, bi_types::TypeError>) -> String {
     match ty_res {
@@ -39,9 +27,6 @@ pub fn run_expr(expr: ParserExpr) {
     let mut type_checker = bi_types::TypeChecker::new();
     let ty_res = type_checker.synth(&expr);
     info!("BiInferred: {}", print_bi_ty_res(ty_res));
-    let mut type_checker = types::TypeChecker::new();
-    let ty_res = type_checker.infer_expr(&expr);
-    info!("Inferred: {}", print_ty_res(ty_res));
     // TODO Either restore eval_expr, or make this into an eval_prog call
     // let eval_res = Term::eval_expr(&expr);
     // info!("Evaled: {}", print_eval_res(eval_res));

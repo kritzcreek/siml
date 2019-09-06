@@ -1,7 +1,6 @@
 use crate::token::Token;
 use crate::expr::*;
-use crate::types::{Type};
-use crate::bi_types;
+use crate::bi_types::{Type};
 
 grammar;
 
@@ -35,7 +34,7 @@ pub Program: Vec<Declaration<String>> = {
 }
 
 pub Declaration: Declaration<String> = {
- "let" <name: "identifier"> ":" <ty: BiType> "=" <expr: Expr> ";" =>
+ "let" <name: "identifier"> ":" <ty: Type> "=" <expr: Expr> ";" =>
    Declaration::Value(
      ValueDeclaration
        { expr: Expr::Ann { expr: Box::new(expr), ty },
@@ -46,7 +45,7 @@ pub Declaration: Declaration<String> = {
 }
 
 DataConstructor: DataConstructor = {
-  <name: "identifier"> <fields: BiType*> => DataConstructor { name: name.to_string(), fields }
+  <name: "identifier"> <fields: Type*> => DataConstructor { name: name.to_string(), fields }
 }
 
 pub Expr: ParserExpr = {
@@ -73,35 +72,29 @@ ExprAtom: ParserExpr = {
     "identifier" => Expr::Var(<>.to_string()),
     "int_literal" => Expr::Literal(Literal::Int(<>)),
     "bool_literal" => Expr::Literal(Literal::Bool(<>)),
-    "(" <e:Expr> ":" <t:BiType> ")" => Expr::Ann{ ty: t, expr: Box::new(e) },
+    "(" <e:Expr> ":" <t:Type> ")" => Expr::Ann{ ty: t, expr: Box::new(e) },
     "(" <fst:Expr> "," <snd:Expr> ")" => Expr::Tuple(Box::new(fst), Box::new(snd)),
     "(" <e:Expr> ")" => e,
 };
 
 pub Type: Type = {
-    BiType => {
-        Type::from_bi_type(<>)
-    }
-}
-
-pub BiType: bi_types::Type = {
-    "forall" <vars: "identifier"+> "." <ty: BiType> => {
-        bi_types::Type::Poly {vars, ty: Box::new(ty)}
+    "forall" <vars: "identifier"+> "." <ty: Type> => {
+        Type::Poly {vars, ty: Box::new(ty)}
     },
-    <arg: TypeAtom> "->" <result: BiType> => {
-        bi_types::Type::Fun {arg: Box::new(arg), result: Box::new(result)}
+    <arg: TypeAtom> "->" <result: Type> => {
+        Type::Fun {arg: Box::new(arg), result: Box::new(result)}
     },
     TypeAtom
 }
 
-TypeAtom: bi_types::Type = {
-    "(" <t:BiType> ")" => t,
-    "(" <fst:BiType> "," <snd:BiType> ")" => bi_types::Type::Tuple(Box::new(fst), Box::new(snd)),
+TypeAtom: Type = {
+    "(" <t:Type> ")" => t,
+    "(" <fst:Type> "," <snd:Type> ")" => Type::Tuple(Box::new(fst), Box::new(snd)),
     <i:"identifier"> => {
       if i.chars().next().unwrap().is_lowercase() {
-          bi_types::Type::Var(i)
+          Type::Var(i)
       } else {
-          bi_types::Type::Constructor(i)
+          Type::Constructor(i)
       }
     }
 }
