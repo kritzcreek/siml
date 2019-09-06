@@ -4,7 +4,6 @@ extern crate rustyline;
 
 pub mod bi_types;
 pub mod codegen;
-pub mod eval;
 pub mod expr;
 pub mod grammar;
 pub mod pipeline;
