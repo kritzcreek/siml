@@ -94,11 +94,32 @@ impl Codegen {
         expr: TypedExpr,
     ) -> Result<(TypedExpr, Vec<(ValueDeclaration<Var>, Type)>), CodegenError> {
         match expr {
+            Expr::Lambda { .. } => {
+                let (binders, body) = expr.collapse_lambdas();
+                let (lifted_body, ds) = self.lambda_lift_inner(body)?;
+                let lam = binders
+                    .into_iter()
+                    .rev()
+                    .fold(lifted_body, |expr, b| Expr::Lambda {
+                        binder: b,
+                        body: Box::new(expr),
+                    });
+                Ok((lam, ds))
+            }
+            _ => self.lambda_lift_inner(expr),
+        }
+    }
+
+    pub fn lambda_lift_inner(
+        &mut self,
+        expr: TypedExpr,
+    ) -> Result<(TypedExpr, Vec<(ValueDeclaration<Var>, Type)>), CodegenError> {
+        match expr {
             Expr::Var(_) => Ok((expr, vec![])),
             Expr::Literal(_) => Ok((expr, vec![])),
             Expr::App { func, arg } => {
-                let (lifted_func, mut d1) = self.lambda_lift(*func)?;
-                let (lifted_arg, d2) = self.lambda_lift(*arg)?;
+                let (lifted_func, mut d1) = self.lambda_lift_inner(*func)?;
+                let (lifted_arg, d2) = self.lambda_lift_inner(*arg)?;
                 d1.extend(d2);
                 Ok((
                     Expr::App {
@@ -109,7 +130,7 @@ impl Codegen {
                 ))
             }
             Expr::Ann { ty, expr } => {
-                let (lifted_expr, ds) = self.lambda_lift(*expr)?;
+                let (lifted_expr, ds) = self.lambda_lift_inner(*expr)?;
                 Ok((
                     Expr::Ann {
                         ty,
@@ -119,8 +140,8 @@ impl Codegen {
                 ))
             }
             Expr::Let { binder, expr, body } => {
-                let (lifted_expr, mut d1) = self.lambda_lift(*expr)?;
-                let (lifted_body, d2) = self.lambda_lift(*body)?;
+                let (lifted_expr, mut d1) = self.lambda_lift_inner(*expr)?;
+                let (lifted_body, d2) = self.lambda_lift_inner(*body)?;
                 d1.extend(d2);
                 Ok((
                     Expr::Let {
@@ -133,8 +154,9 @@ impl Codegen {
             }
             Expr::Lambda { .. } => {
                 let (binders, body) = expr.collapse_lambdas();
+                let binders_len = binders.len();
                 let fresh_name = self.fresh_top_name();
-                let (lifted_body, mut ds) = self.lambda_lift(body)?;
+                let (lifted_body, mut ds) = self.lambda_lift_inner(body)?;
                 let value_decl = ValueDeclaration {
                     name: fresh_name.clone(),
                     expr: binders
@@ -150,7 +172,7 @@ impl Codegen {
                 // So far we're just creating a function type with enough arguments
                 // so we generate the right WASM signature
                 let ty = std::iter::repeat(Type::int())
-                    .take(4)
+                    .take(binders_len)
                     .fold(Type::int(), |acc, ty| Type::fun(ty, acc));
 
                 ds.push((value_decl, ty.clone()));
@@ -427,7 +449,7 @@ mod tests {
         let my_expr = expr("(\\x. add 1 ((\\y. \\x. add y x) 4 6)) ((\\x. x) 3)");
 
         let mut cg = Codegen::new();
-        let (lifted, ds) = cg.lambda_lift(my_expr).unwrap();
+        let (lifted, ds) = cg.lambda_lift_inner(my_expr).unwrap();
         println!("{}", lifted);
         for (vd, _) in ds {
             println!("{} = {}", vd.name, vd.expr);
