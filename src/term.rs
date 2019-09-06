@@ -141,6 +141,12 @@ pub enum EvalError {
     FailedPatternMatch(Term),
 }
 
+impl fmt::Display for EvalError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.print())
+    }
+}
+
 impl EvalError {
     pub fn print(&self) -> String {
         match self {

@@ -1,6 +1,26 @@
 use crate::bi_types::Type;
 use crate::expr::{Declaration, Expr, HasIdent, Literal, TypedExpr, ValueDeclaration, Var};
 use std::collections::{HashMap, HashSet};
+use std::fmt;
+
+#[derive(Debug)]
+pub enum CodegenError {
+    NotImplemented(String),
+}
+
+impl fmt::Display for CodegenError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                CodegenError::NotImplemented(str) => {
+                    format!("Codegen not implemented for: {}", str)
+                }
+            }
+        )
+    }
+}
 
 #[derive(Default)]
 pub struct Codegen {
@@ -40,28 +60,28 @@ impl Codegen {
         self.global_names = global_names;
     }
 
-    pub fn codegen(mut self, prog: &[(Declaration<Var>, Type)]) -> String {
+    pub fn codegen(mut self, prog: &[(Declaration<Var>, Type)]) -> Result<String, CodegenError> {
         self.populate_global_names(prog);
         self.out += "(module\n";
         self.rts();
         for decl in prog {
             if let (Declaration::Value(ValueDeclaration { name, expr }), ty) = decl {
-                let (expr, decls) = self.lambda_lift(expr.clone());
+                let (expr, decls) = self.lambda_lift(expr.clone())?;
                 let start_size = self.global_names.len();
                 for (ix, (decl, ty)) in decls.iter().enumerate() {
                     self.global_names
                         .insert(decl.name.clone(), ((start_size + ix) as u32, ty.clone()));
                 }
                 for (decl, ty) in decls {
-                    self.fun(&decl.name, &decl.expr, &ty)
+                    self.fun(&decl.name, &decl.expr, &ty)?
                 }
-                self.fun(name, &expr, ty);
+                self.fun(name, &expr, ty)?;
             }
         }
         self.entry_point();
         self.function_table();
         self.out += "\n)";
-        self.out
+        Ok(self.out)
     }
 
     fn rts(&mut self) {
@@ -72,49 +92,49 @@ impl Codegen {
     pub fn lambda_lift(
         &mut self,
         expr: TypedExpr,
-    ) -> (TypedExpr, Vec<(ValueDeclaration<Var>, Type)>) {
+    ) -> Result<(TypedExpr, Vec<(ValueDeclaration<Var>, Type)>), CodegenError> {
         match expr {
-            Expr::Var(_) => (expr, vec![]),
-            Expr::Literal(_) => (expr, vec![]),
+            Expr::Var(_) => Ok((expr, vec![])),
+            Expr::Literal(_) => Ok((expr, vec![])),
             Expr::App { func, arg } => {
-                let (lifted_func, mut d1) = self.lambda_lift(*func);
-                let (lifted_arg, d2) = self.lambda_lift(*arg);
+                let (lifted_func, mut d1) = self.lambda_lift(*func)?;
+                let (lifted_arg, d2) = self.lambda_lift(*arg)?;
                 d1.extend(d2);
-                (
+                Ok((
                     Expr::App {
                         func: Box::new(lifted_func),
                         arg: Box::new(lifted_arg),
                     },
                     d1,
-                )
+                ))
             }
             Expr::Ann { ty, expr } => {
-                let (lifted_expr, ds) = self.lambda_lift(*expr);
-                (
+                let (lifted_expr, ds) = self.lambda_lift(*expr)?;
+                Ok((
                     Expr::Ann {
                         ty,
                         expr: Box::new(lifted_expr),
                     },
                     ds,
-                )
+                ))
             }
             Expr::Let { binder, expr, body } => {
-                let (lifted_expr, mut d1) = self.lambda_lift(*expr);
-                let (lifted_body, d2) = self.lambda_lift(*body);
+                let (lifted_expr, mut d1) = self.lambda_lift(*expr)?;
+                let (lifted_body, d2) = self.lambda_lift(*body)?;
                 d1.extend(d2);
-                (
+                Ok((
                     Expr::Let {
                         binder,
                         expr: Box::new(lifted_expr),
                         body: Box::new(lifted_body),
                     },
                     d1,
-                )
+                ))
             }
             Expr::Lambda { .. } => {
                 let (binders, body) = expr.collapse_lambdas();
                 let fresh_name = self.fresh_top_name();
-                let (lifted_body, mut ds) = self.lambda_lift(body);
+                let (lifted_body, mut ds) = self.lambda_lift(body)?;
                 let value_decl = ValueDeclaration {
                     name: fresh_name.clone(),
                     expr: binders
@@ -134,34 +154,41 @@ impl Codegen {
                     .fold(Type::int(), |acc, ty| Type::fun(ty, acc));
 
                 ds.push((value_decl, ty.clone()));
-                (
+                Ok((
                     Expr::Var(Var {
                         name: fresh_name,
                         ty,
                     }),
                     ds,
-                )
+                ))
             }
-            Expr::Case { .. } => panic!("Not implemented lambda lifting for case"),
-            Expr::Tuple { .. } => panic!("Not implemented lambda lifting for tuple"),
+            Expr::Case { .. } => Err(CodegenError::NotImplemented("case".to_string())),
+            Expr::Tuple { .. } => Err(CodegenError::NotImplemented("tuple".to_string())),
         }
     }
 
-    pub fn let_lift(&mut self, expr: TypedExpr) -> (TypedExpr, HashSet<String>) {
+    pub fn let_lift(
+        &mut self,
+        expr: TypedExpr,
+    ) -> Result<(TypedExpr, HashSet<String>), CodegenError> {
         let mut used: HashSet<String> = HashSet::new();
-        (self.let_lift_inner(&mut used, expr), used)
+        Ok((self.let_lift_inner(&mut used, expr)?, used))
     }
 
-    fn let_lift_inner(&mut self, used: &mut HashSet<String>, expr: TypedExpr) -> Expr<Var> {
+    fn let_lift_inner(
+        &mut self,
+        used: &mut HashSet<String>,
+        expr: TypedExpr,
+    ) -> Result<Expr<Var>, CodegenError> {
         match expr {
-            Expr::App { func, arg } => Expr::App {
-                func: Box::new(self.let_lift_inner(used, *func)),
-                arg: Box::new(self.let_lift_inner(used, *arg)),
-            },
-            Expr::Lambda { binder, body } => Expr::Lambda {
+            Expr::App { func, arg } => Ok(Expr::App {
+                func: Box::new(self.let_lift_inner(used, *func)?),
+                arg: Box::new(self.let_lift_inner(used, *arg)?),
+            }),
+            Expr::Lambda { binder, body } => Ok(Expr::Lambda {
                 binder,
-                body: Box::new(self.let_lift_inner(used, *body)),
-            },
+                body: Box::new(self.let_lift_inner(used, *body)?),
+            }),
             Expr::Let { binder, expr, body } => {
                 let fresh_binder;
                 let mut body = body;
@@ -178,23 +205,23 @@ impl Codegen {
                     fresh_binder = binder.ident()
                 }
                 used.insert(fresh_binder.clone());
-                Expr::Let {
+                Ok(Expr::Let {
                     binder: Var {
                         name: fresh_binder,
                         ty: binder.ty,
                     },
-                    expr: Box::new(self.let_lift_inner(used, *expr)),
-                    body: Box::new(self.let_lift_inner(used, *body)),
-                }
+                    expr: Box::new(self.let_lift_inner(used, *expr)?),
+                    body: Box::new(self.let_lift_inner(used, *body)?),
+                })
             }
-            Expr::Var(var) => Expr::Var(var),
-            Expr::Literal(lit) => Expr::Literal(lit),
-            Expr::Ann { expr, ty } => Expr::Ann {
-                expr: Box::new(self.let_lift_inner(used, *expr)),
+            Expr::Var(var) => Ok(Expr::Var(var)),
+            Expr::Literal(lit) => Ok(Expr::Literal(lit)),
+            Expr::Ann { expr, ty } => Ok(Expr::Ann {
+                expr: Box::new(self.let_lift_inner(used, *expr)?),
                 ty,
-            },
-            Expr::Tuple(..) => unreachable!("TODO: Tuple"),
-            Expr::Case { .. } => unreachable!("TODO: Tuple"),
+            }),
+            Expr::Tuple(..) => Err(CodegenError::NotImplemented("tuple".to_string())),
+            Expr::Case { .. } => Err(CodegenError::NotImplemented("case".to_string())),
         }
     }
 
@@ -205,7 +232,7 @@ impl Codegen {
         }
     }
 
-    fn gen_expr(&mut self, expr: Expr<Var>) {
+    fn gen_expr(&mut self, expr: Expr<Var>) -> Result<(), CodegenError> {
         match expr {
             Expr::Ann { expr, .. } => self.gen_expr(*expr),
             Expr::Var(v) => {
@@ -216,29 +243,39 @@ impl Codegen {
                 } else {
                     self.out += &format!("(local.get ${})", v.name)
                 }
+                Ok(())
             }
-            Expr::Literal(Literal::Int(i)) => self.out += &format!("(i32.const {})", i),
+            Expr::Literal(Literal::Int(i)) => {
+                self.out += &format!("(i32.const {})", i);
+                Ok(())
+            }
             Expr::App { func, arg } => {
-                self.gen_expr(*func);
+                self.gen_expr(*func)?;
                 self.out += "(call $apply ";
-                self.gen_expr(*arg);
+                self.gen_expr(*arg)?;
                 self.out += ")";
+                Ok(())
             }
             Expr::Let { binder, expr, body } => {
                 self.out += &format!("(local.set ${}", binder.ident());
-                self.gen_expr(*expr);
+                self.gen_expr(*expr)?;
                 self.out += ")";
-                self.gen_expr(*body);
+                self.gen_expr(*body)
             }
-            _ => panic!("Unknown Expr codegen {:?}", expr),
+            Expr::Literal(Literal::Bool(_)) => {
+                Err(CodegenError::NotImplemented("bool".to_string()))
+            }
+            Expr::Lambda { .. } => Err(CodegenError::NotImplemented("lambda".to_string())),
+            Expr::Tuple(..) => Err(CodegenError::NotImplemented("tuple".to_string())),
+            Expr::Case { .. } => Err(CodegenError::NotImplemented("case".to_string())),
         }
     }
 
-    fn fun(&mut self, name: &str, expr: &TypedExpr, ty: &Type) {
+    fn fun(&mut self, name: &str, expr: &TypedExpr, ty: &Type) -> Result<(), CodegenError> {
         info!("{} : {} =\n{}", name, ty, expr);
         // TODO Got to handle duplicate binders here (or somewhere earlier)
         let (binders, body) = expr.clone().collapse_lambdas();
-        let (body, let_binders) = self.let_lift(body);
+        let (body, let_binders) = self.let_lift(body)?;
         let mut args = ty.unfold_fun();
         // All results are i32's anyway
         let _res = args.pop();
@@ -264,7 +301,7 @@ impl Codegen {
             )
         }
 
-        self.gen_expr(body);
+        self.gen_expr(body)?;
         self.out += ")\n";
 
         if binder_count == 0 {
@@ -278,6 +315,7 @@ impl Codegen {
                 self.global_names.get(name).unwrap().0
             )
         }
+        Ok(())
     }
 
     fn entry_point(&mut self) {
@@ -376,7 +414,7 @@ mod tests {
         let my_expr = expr("let hello = x in (let hello = x in hello)");
 
         let mut cg = Codegen::new();
-        let (lifted, names) = cg.let_lift(my_expr);
+        let (lifted, names) = cg.let_lift(my_expr).unwrap();
         assert_eq!(lifted, expr("let hello = x in (let hello1 = x in hello1)"));
         assert_eq!(
             names,
@@ -389,11 +427,11 @@ mod tests {
         let my_expr = expr("(\\x. add 1 ((\\y. \\x. add y x) 4 6)) ((\\x. x) 3)");
 
         let mut cg = Codegen::new();
-        let (lifted, ds) = cg.lambda_lift(my_expr);
+        let (lifted, ds) = cg.lambda_lift(my_expr).unwrap();
         println!("{}", lifted);
         for (vd, _) in ds {
             println!("{} = {}", vd.name, vd.expr);
         }
-        assert!(false);
+        assert!(true) // change to false to start debugging
     }
 }

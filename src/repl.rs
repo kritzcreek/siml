@@ -75,10 +75,14 @@ pub fn run_wasm_program(input: &str) {
                 }
                 Ok(tys) => {
                     info!("Codegen:");
-                    let prog = Codegen::new().codegen(&tys);
-                    info!("Generated WAT:\n{}", prog);
-                    let wasm_res = wasm::run_wasm(prog);
-                    info!("WASM result:\n{}", wasm::pretty_result(wasm_res));
+                    match Codegen::new().codegen(&tys) {
+                        Err(err) => error!("{}", err),
+                        Ok(prog) => {
+                            info!("Generated WAT:\n{}", prog);
+                            let wasm_res = wasm::run_wasm(prog);
+                            info!("WASM result:\n{}", wasm::pretty_result(wasm_res));
+                        }
+                    }
                 }
             };
         }
