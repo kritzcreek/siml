@@ -69,7 +69,7 @@ impl Lowering {
             .collect()
     }
 
-    fn lower_expr<B: HasIdent>(&self, expr: Expr<B>) -> Term {
+    pub fn lower_expr<B: HasIdent>(&self, expr: Expr<B>) -> Term {
         match expr {
             Expr::App { func, arg } => Term::App {
                 func: Box::new(self.lower_expr(*func)),
@@ -175,6 +175,11 @@ impl Term {
             env.insert(name, res.clone());
         }
         Ok(res)
+    }
+
+    pub fn eval_expr<B: HasIdent>(expr: Expr<B>) -> Result<Term, EvalError> {
+        let lowered = Lowering::new().lower_expr(expr);
+        Term::eval(&initial_env(), lowered)
     }
 
     fn eval(env: &Env, term: Term) -> Result<Term, EvalError> {
