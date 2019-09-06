@@ -74,15 +74,20 @@ fn run_wasm_file() {
 }
 
 fn main() {
+    let use_wasm = true;
     setup_logger();
-    //    run_file();
-    run_wasm_file();
-    //    thread::spawn(move || {
-    //        watch_file().expect("File watcher failed");
-    //    });
-    thread::spawn(move || {
-        watch_wasm_file().expect("WASM File watcher failed");
-    });
+    if use_wasm {
+        run_wasm_file();
+        thread::spawn(move || {
+            watch_wasm_file().expect("WASM File watcher failed");
+        });
+    } else {
+        run_file();
+        thread::spawn(move || {
+            watch_file().expect("File watcher failed");
+        });
+    }
+
     loop {
         thread::sleep(Duration::from_secs(2))
     }

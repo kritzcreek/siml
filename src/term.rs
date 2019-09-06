@@ -95,7 +95,7 @@ impl Lowering {
                 },
             },
             Expr::Literal(lit) => Term::Literal(lit.clone()),
-            Expr::Ann { expr, ty: _ } => self.lower_expr(*expr),
+            Expr::Ann { expr, .. } => self.lower_expr(*expr),
             Expr::Tuple(fst, snd) => Term::Pack {
                 tag: 1,
                 arity: 2,
@@ -119,7 +119,7 @@ impl Lowering {
     }
 
     fn tag_for_constructor(&self, ctor: String) -> Option<u32> {
-        let res = self.types.iter().find_map(|t| {
+        self.types.iter().find_map(|t| {
             t.constructors.iter().enumerate().find_map(|(ix, c)| {
                 if c.name == ctor {
                     Some(ix as u32)
@@ -127,8 +127,7 @@ impl Lowering {
                     None
                 }
             })
-        });
-        res
+        })
     }
 }
 
@@ -196,20 +195,12 @@ impl Term {
                     (_, _) => panic!("Bad implementation for add"),
                 },
                 "primfst" => match env.get("x") {
-                    Some(Term::Pack {
-                        tag: _,
-                        arity: _,
-                        values,
-                    }) => Ok(values[0].clone()),
+                    Some(Term::Pack { values, .. }) => Ok(values[0].clone()),
                     Some(term) => Err(EvalError::ProjectingFst(term.clone())),
                     None => panic!("Bad implementation for fst"),
                 },
                 "primsnd" => match env.get("x") {
-                    Some(Term::Pack {
-                        tag: _,
-                        arity: _,
-                        values,
-                    }) => Ok(values[1].clone()),
+                    Some(Term::Pack { values, .. }) => Ok(values[1].clone()),
                     Some(term) => Err(EvalError::ProjectingFst(term.clone())),
                     None => panic!("Bad implementation for fst"),
                 },
@@ -265,11 +256,7 @@ impl Term {
             Term::Case { expr, cases } => {
                 let evaled_expr = Term::eval(env, *expr)?;
                 match evaled_expr {
-                    Term::Pack {
-                        tag,
-                        arity: _,
-                        values: _,
-                    } => {
+                    Term::Pack { tag, .. } => {
                         let matched_case = cases.into_iter().find_map(|case| {
                             if case.tag == tag {
                                 Some(case.expr)
@@ -298,11 +285,7 @@ impl Term {
             Term::Var(s) => s.clone(),
             Term::Literal(lit) => lit.print(),
             Term::Lambda { binder, body } => format!("(\\{}. {})", binder, body),
-            Term::Closure {
-                binder,
-                body,
-                env: _,
-            } => format!("(\\{}. {})", binder, body),
+            Term::Closure { binder, body, .. } => format!("(\\{}. {})", binder, body),
             Term::App { func, arg } => parens_if(
                 depth > 0,
                 format!("{} {}", func.print_inner(depth), arg.print_inner(depth + 1)),
@@ -312,7 +295,7 @@ impl Term {
                 tag,
                 arity,
                 values
-                    .into_iter()
+                    .iter()
                     .map(|t| t.print())
                     .collect::<Vec<String>>()
                     .join(", ")

@@ -2,15 +2,12 @@ use crate::expr::Expr;
 
 type EvalExpr = Expr<String>;
 
+#[derive(Default)]
 pub struct Eval {
     supply: u32,
 }
 
 impl Eval {
-    pub fn new() -> Eval {
-        Eval { supply: 0 }
-    }
-
     pub fn eval(&mut self, expr: EvalExpr) -> EvalExpr {
         match expr {
             Expr::App { func, arg } => {
@@ -50,22 +47,17 @@ impl Eval {
                     },
                 }
             }
-            Expr::Ann { expr, ty: _ } => self.eval(*expr),
+            Expr::Ann { expr, .. } => self.eval(*expr),
             _ => expr,
         }
     }
 
-    fn fresh_var(&mut self, var: &String) -> String {
-        self.supply = self.supply + 1;
+    fn fresh_var(&mut self, var: &str) -> String {
+        self.supply += 1;
         format!("{}{}", self.supply, var)
     }
 
-    fn substitute(
-        &mut self,
-        expr: &EvalExpr,
-        scrutinee: &String,
-        replacement: &EvalExpr,
-    ) -> EvalExpr {
+    fn substitute(&mut self, expr: &EvalExpr, scrutinee: &str, replacement: &EvalExpr) -> EvalExpr {
         match expr {
             Expr::Var(x) => {
                 if scrutinee == x {

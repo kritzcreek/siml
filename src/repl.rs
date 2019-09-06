@@ -1,5 +1,4 @@
-use crate::bi_types::{Type, TypeError, TypeChecker};
-use crate::expr::ParserExpr;
+use crate::bi_types::{Type, TypeChecker, TypeError};
 use crate::grammar;
 use crate::term;
 use crate::term::Term;

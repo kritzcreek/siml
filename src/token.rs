@@ -45,8 +45,8 @@ impl<'input> Lexer<'input> {
         self.input.next()
     }
 
-    fn peek(&mut self) -> Option<&char> {
-        self.input.peek()
+    fn peek(&mut self) -> Option<char> {
+        self.input.peek().cloned()
     }
 
     fn consume_whitespace(&mut self) {
@@ -60,14 +60,14 @@ impl<'input> Lexer<'input> {
     }
 }
 
-fn is_ident_start(c: &char) -> bool {
+fn is_ident_start(c: char) -> bool {
     match c {
         'a'..='z' | 'A'..='Z' => true,
         _ => false,
     }
 }
 
-fn is_ident_member(c: &char) -> bool {
+fn is_ident_member(c: char) -> bool {
     match c {
         'a'..='z' => true,
         '0'..='9' => true,
@@ -91,7 +91,7 @@ impl<'input> Iterator for Lexer<'input> {
             Some(';') => Some(Token::Semi),
             Some(',') => Some(Token::Comma),
             Some('=') => {
-                if self.peek() == Some(&'>') {
+                if self.peek() == Some('>') {
                     self.next();
                     Some(Token::FatArrow)
                 } else {
@@ -99,7 +99,7 @@ impl<'input> Iterator for Lexer<'input> {
                 }
             }
             Some('-') => {
-                if self.peek() == Some(&'>') {
+                if self.peek() == Some('>') {
                     self.next();
                     Some(Token::Arrow)
                 } else {
@@ -117,7 +117,7 @@ impl<'input> Iterator for Lexer<'input> {
                 }
                 Some(Token::IntLiteral(res.parse::<i32>().unwrap()))
             }
-            Some(c) if is_ident_start(&c) => {
+            Some(c) if is_ident_start(c) => {
                 let mut res = c.to_string();
                 while let Some(c) = self.peek() {
                     if is_ident_member(c) {

@@ -2,6 +2,7 @@ use crate::bi_types::Type;
 use crate::expr::{Declaration, Expr, HasIdent, Literal, TypedExpr, ValueDeclaration, Var};
 use std::collections::{HashMap, HashSet};
 
+#[derive(Default)]
 pub struct Codegen {
     supply: u32,
     /// A mapping from names to their index in the function table as well as their type
@@ -27,11 +28,11 @@ impl Codegen {
         self.fresh_name("$".to_owned())
     }
 
-    fn populate_global_names(&mut self, prog: &Vec<(Declaration<Var>, Type)>) {
+    fn populate_global_names(&mut self, prog: &[(Declaration<Var>, Type)]) {
         let mut index_supply: u32 = 0;
         let mut global_names = HashMap::new();
         for decl in prog {
-            if let (Declaration::Value(ValueDeclaration { name, expr: _ }), ty) = decl {
+            if let (Declaration::Value(ValueDeclaration { name, .. }), ty) = decl {
                 global_names.insert(name.to_string(), (index_supply, ty.clone()));
                 index_supply += 1;
             }
@@ -39,7 +40,7 @@ impl Codegen {
         self.global_names = global_names;
     }
 
-    pub fn codegen(mut self, prog: &Vec<(Declaration<Var>, Type)>) -> String {
+    pub fn codegen(mut self, prog: &[(Declaration<Var>, Type)]) -> String {
         self.populate_global_names(prog);
         self.out += "(module\n";
         self.rts();
@@ -60,7 +61,7 @@ impl Codegen {
         self.entry_point();
         self.function_table();
         self.out += "\n)";
-        return self.out;
+        self.out
     }
 
     fn rts(&mut self) {
@@ -206,7 +207,7 @@ impl Codegen {
 
     fn gen_expr(&mut self, expr: Expr<Var>) {
         match expr {
-            Expr::Ann { ty: _, expr } => self.gen_expr(*expr),
+            Expr::Ann { expr, .. } => self.gen_expr(*expr),
             Expr::Var(v) => {
                 if &v.name == "primadd" {
                     self.out += "(i32.add (local.get $x) (local.get $y))"
@@ -219,14 +220,14 @@ impl Codegen {
             Expr::Literal(Literal::Int(i)) => self.out += &format!("(i32.const {})", i),
             Expr::App { func, arg } => {
                 self.gen_expr(*func);
-                self.out += &format!("(call $apply ");
+                self.out += "(call $apply ";
                 self.gen_expr(*arg);
-                self.out += &format!(")");
+                self.out += ")";
             }
             Expr::Let { binder, expr, body } => {
                 self.out += &format!("(local.set ${}", binder.ident());
                 self.gen_expr(*expr);
-                self.out += &format!(")");
+                self.out += ")";
                 self.gen_expr(*body);
             }
             _ => panic!("Unknown Expr codegen {:?}", expr),
@@ -244,9 +245,9 @@ impl Codegen {
         self.out += &format!("\n(func ${}", name);
         let binder_count = binders.len();
         if binder_count != 0 {
-            self.out += &format!(" (param $args i32)")
+            self.out += " (param $args i32)"
         }
-        self.out += &format!(" (result i32)\n");
+        self.out += " (result i32)\n";
 
         for binder in binders.iter() {
             self.out += &format!("(local ${} i32)\n", binder.name)
