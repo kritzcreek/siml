@@ -360,17 +360,17 @@ impl<B> Expr<B> {
         }
     }
 
-    pub fn collapse_lambdas(&self) -> (Vec<&B>, &Expr<B>) {
+    pub fn collapse_lambdas(self) -> (Vec<B>, Expr<B>) {
         let mut bod = self;
         let mut args = vec![];
         loop {
             match bod {
                 Expr::Lambda { binder, body } => {
                     args.push(binder);
-                    bod = body;
+                    bod = *body;
                 }
                 Expr::Ann { ty: _, expr } => {
-                    bod = expr;
+                    bod = *expr;
                 }
                 _ => break,
             }

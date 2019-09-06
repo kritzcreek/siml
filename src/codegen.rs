@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 pub struct Codegen {
     supply: u32,
+    /// A mapping from names to their index in the function table as well as their type
     global_names: HashMap<String, (u32, Type)>,
     out: String,
 }
@@ -67,7 +68,10 @@ impl Codegen {
         self.out += CLOSURE_RTS;
     }
 
-    pub fn lambda_lift(&mut self, expr: TypedExpr) -> (TypedExpr, Vec<(ValueDeclaration<Var>, Type)>) {
+    pub fn lambda_lift(
+        &mut self,
+        expr: TypedExpr,
+    ) -> (TypedExpr, Vec<(ValueDeclaration<Var>, Type)>) {
         match expr {
             Expr::Var(_) => (expr, vec![]),
             Expr::Literal(_) => (expr, vec![]),
@@ -107,30 +111,29 @@ impl Codegen {
                 )
             }
             Expr::Lambda { .. } => {
-                // TODO Write a moving implementation for collapse_lambdas
                 let (binders, body) = expr.collapse_lambdas();
-                let binder_count = binders.len();
                 let fresh_name = self.fresh_top_name();
-                let (lifted_body, mut ds) = self.lambda_lift(body.clone());
+                let (lifted_body, mut ds) = self.lambda_lift(body);
                 let value_decl = ValueDeclaration {
                     name: fresh_name.clone(),
                     expr: binders
                         .into_iter()
                         .rev()
                         .fold(lifted_body, |e, b| Expr::Lambda {
-                            binder: b.clone(),
+                            binder: b,
                             body: Box::new(e),
                         }),
                 };
 
-                let ty =
-                    std::iter::repeat(Type::int())
+                // TODO Figure out the actual type here
+                // So far we're just creating a function type with enough arguments
+                // so we generate the right WASM signature
+                let ty = std::iter::repeat(Type::int())
                     .take(4)
                     .fold(Type::int(), |acc, ty| Type::fun(ty, acc));
 
                 ds.push((value_decl, ty.clone()));
                 (
-                    // TODO Figure out the actual type here
                     Expr::Var(Var {
                         name: fresh_name,
                         ty,
@@ -233,8 +236,8 @@ impl Codegen {
     fn fun(&mut self, name: &str, expr: &TypedExpr, ty: &Type) {
         info!("{} : {} =\n{}", name, ty, expr);
         // TODO Got to handle duplicate binders here (or somewhere earlier)
-        let (binders, body) = expr.collapse_lambdas();
-        let (body, let_binders) = self.let_lift(body.clone());
+        let (binders, body) = expr.clone().collapse_lambdas();
+        let (body, let_binders) = self.let_lift(body);
         let mut args = ty.unfold_fun();
         // All results are i32's anyway
         let _res = args.pop();
@@ -260,7 +263,7 @@ impl Codegen {
             )
         }
 
-        self.gen_expr(body.clone());
+        self.gen_expr(body);
         self.out += ")\n";
 
         if binder_count == 0 {
