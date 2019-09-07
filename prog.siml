@@ -51,16 +51,21 @@ type Location {
 let red : Color = Color::Red();
 let green : Color = Color::Green();
 
-let my_loc : Location =
-  Location::Loc(1, 2);
+let my_loc : Int -> Location = \x.
+  Location::Loc(1, x);
+
+let latitude : Location -> Int =
+  \loc. match loc {
+    Location::Loc(lat, long) => lat,
+  };
 
 let match_test : Int =
   let day_of_week =
     \day. match day {
-      Day::Monday => 1,
-      Day::Tuesday => 2,
-      Day::Wednesday => 3,
-      Day::Thursday => 4,
-      Day::Friday => 5,
+      Day::Monday() => 1,
+      Day::Tuesday() => 2,
+      Day::Wednesday() => 3,
+      Day::Thursday() => 4,
+      Day::Friday() => 5,
     } in
   day_of_week Day::Wednesday();

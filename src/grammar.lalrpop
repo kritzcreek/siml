@@ -66,9 +66,8 @@ pub Expr: ParserExpr = {
 }
 
 pub Match: Match<String> = {
-  // TODO
-  <dtor: Dtor> "=>" <expr: Expr> =>
-    Match { data_constructor: dtor, binders: vec![], expr }
+  <dtor: Dtor> "(" <binders: CommaSep<"identifier">> ")" "=>" <expr: Expr> =>
+    Match { data_constructor: dtor, binders, expr }
 };
 
 Dtor: Dtor = {
