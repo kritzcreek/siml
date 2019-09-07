@@ -67,16 +67,20 @@ pub Expr: ParserExpr = {
 
 pub Match: Match<String> = {
   // TODO
-  <dtor: "upper_identifier"> "=>" <expr: Expr> =>
+  <dtor: Dtor> "=>" <expr: Expr> =>
     Match { data_constructor: dtor, binders: vec![], expr }
+};
+
+Dtor: Dtor = {
+  <ty: "upper_identifier"> "::" <name: "upper_identifier"> => Dtor { ty, name }
 };
 
 ExprAtom: ParserExpr = {
     "identifier" => Expr::Var(<>.to_string()),
     "int_literal" => Expr::Literal(Literal::Int(<>)),
     "bool_literal" => Expr::Literal(Literal::Bool(<>)),
-    <ty: "upper_identifier"> "::" <name: "upper_identifier"> "(" <args: CommaSep<Expr>> ")" => {
-      Expr::Construction { dtor: Dtor { ty, name }, args }
+    <dtor: Dtor> "(" <args: CommaSep<Expr>> ")" => {
+      Expr::Construction { dtor, args }
     },
     "(" <e:Expr> ":" <t:Type> ")" => Expr::Ann{ ty: t, expr: Box::new(e) },
     "(" <fst:Expr> "," <snd:Expr> ")" => Expr::Tuple(Box::new(fst), Box::new(snd)),

@@ -54,10 +54,10 @@ let green : Color = Color::Green();
 let match_test : Int =
   let day_of_week =
     \day. match day {
-      Monday => 1,
-      Tuesday => 2,
-      Wednesday => 3,
-      Thursday => 4,
-      Friday => 5,
+      Day::Monday => 1,
+      Day::Tuesday => 2,
+      Day::Wednesday => 3,
+      Day::Thursday => 4,
+      Day::Friday => 5,
     } in
   day_of_week Day::Wednesday();

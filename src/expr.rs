@@ -81,7 +81,7 @@ impl HasIdent for Var {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Match<B> {
-    pub data_constructor: String,
+    pub data_constructor: Dtor,
     pub binders: Vec<B>,
     pub expr: Expr<B>,
 }
@@ -122,7 +122,9 @@ impl<B> Match<B> {
     where
         B: HasIdent,
     {
-        Doc::text(self.data_constructor.ident())
+        Doc::text(&self.data_constructor.ty)
+            .append(Doc::text("::"))
+            .append(Doc::text(&self.data_constructor.name))
             .append(Doc::space())
             .append(Doc::intersperse(
                 self.binders.iter().map(|x| Doc::text(x.ident())),

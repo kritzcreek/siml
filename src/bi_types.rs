@@ -908,8 +908,8 @@ impl TypeChecker {
     ) -> Result<(Context, Match<Var>), TypeError> {
         // Ignoring binders for now
         let ty_dtor = ctx
-            .find_var(&case.data_constructor)
-            .ok_or_else(|| TypeError::UnknownDataConstructor(case.data_constructor.clone()))?;
+            .find_var(&case.data_constructor.name)
+            .ok_or_else(|| TypeError::UnknownDataConstructor(case.data_constructor.clone().name))?;
 
         let ctx = self.unify(ctx, &ty_dtor, ty_match)?;
         // TODO bring binders into scope here
@@ -1187,10 +1187,10 @@ impl TypeChecker {
     ) -> Result<(Context, Type, Match<Var>), TypeError> {
         // Ignoring binders for now
         let ty_dtor: Type;
-        match ctx.find_var(&case.data_constructor) {
+        match ctx.find_var(&case.data_constructor.name) {
             None => {
                 return Err(TypeError::UnknownDataConstructor(
-                    case.data_constructor.clone(),
+                    case.data_constructor.name.clone(),
                 ));
             }
             Some(dtor) => {

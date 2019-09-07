@@ -119,7 +119,7 @@ impl Lowering {
     fn lower_match<B: HasIdent>(&self, match_: Match<B>) -> TermMatch {
         TermMatch {
             tag: self
-                .tag_for_constructor(match_.data_constructor)
+                .tag_for_constructor(match_.data_constructor.name)
                 .expect("Failed to find data constructor during lowering"),
             binders: vec![],
             expr: self.lower_expr(match_.expr),
