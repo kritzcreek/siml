@@ -51,6 +51,9 @@ type Location {
 let red : Color = Color::Red();
 let green : Color = Color::Green();
 
+let my_loc : Location =
+  Location::Loc(1, 2);
+
 let match_test : Int =
   let day_of_week =
     \day. match day {

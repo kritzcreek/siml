@@ -28,6 +28,24 @@ pub struct DataConstructor {
     pub fields: Vec<Type>,
 }
 
+impl DataConstructor {
+    pub fn to_doc(&self) -> Doc<BoxDoc<()>> {
+        Doc::text(&self.name)
+            .append(Doc::text("("))
+            .append(Doc::intersperse(
+                self.fields.iter().map(|ty| ty.to_doc()),
+                Doc::text(",").append(Doc::space()),
+            ))
+            .append(Doc::text(")"))
+    }
+}
+
+impl fmt::Display for DataConstructor {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", render_doc_width(self.to_doc(), 80))
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Literal {
     Int(i32),
@@ -148,6 +166,12 @@ impl Match<Var> {
 pub struct Dtor {
     pub ty: String,
     pub name: String,
+}
+
+impl fmt::Display for Dtor {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}::{}", self.ty, self.name)
+    }
 }
 
 /// The AST for expressions. It's parameterized over its variable

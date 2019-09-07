@@ -1,12 +1,9 @@
 #![allow(dead_code)]
 
-use crate::expr::{
-    DataConstructor, Declaration, Expr, Literal, Match, ParserExpr, TypeDeclaration, TypedExpr,
-    ValueDeclaration, Var,
-};
+use crate::expr::{DataConstructor, Declaration, Expr, Literal, Match, ParserExpr, TypeDeclaration, TypedExpr, ValueDeclaration, Var, Dtor};
 use crate::pretty::render_doc;
 use pretty::{BoxDoc, Doc};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -224,21 +221,8 @@ impl Type {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct TypeDefinition {
-    name: String,
-    type_parameters: Vec<String>,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct DataConstructorDefinition {
-    name: String,
-    ty: Type,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Context {
-    types: Vec<TypeDefinition>,
-    data_constructors: Vec<DataConstructorDefinition>,
+    types: HashMap<String, Vec<DataConstructor>>,
     elems: Vec<ContextElem>,
 }
 
@@ -251,25 +235,9 @@ impl fmt::Display for Context {
 impl Context {
     pub fn new(elems: Vec<ContextElem>) -> Context {
         Context {
-            types: vec![],
-            data_constructors: vec![],
+            types: HashMap::new(),
             elems,
         }
-    }
-
-    pub fn add_type(&mut self, type_def: TypeDefinition) {
-        self.types.push(type_def);
-    }
-
-    pub fn add_constructor(&mut self, ret_ty: Type, data_constructor: DataConstructor) {
-        let dtor_def = DataConstructorDefinition {
-            name: data_constructor.name,
-            ty: data_constructor
-                .fields
-                .into_iter()
-                .fold(ret_ty, |acc, ty| Type::fun(ty, acc)),
-        };
-        self.data_constructors.push(dtor_def)
     }
 
     pub fn print(&self) -> String {
@@ -277,9 +245,13 @@ impl Context {
         self.elems
             .iter()
             .for_each(|ce| res += &format!("  {},\n", &ce));
-        self.types
-            .iter()
-            .for_each(|ty| res += &format!("  {},\n", &ty.name));
+        self.types.iter().for_each(|(ty, dtors)| {
+            res += &format!(
+                "  type {} ({}),\n",
+                ty,
+                dtors.iter().map(|dtor| format!("{}", dtor)).collect::<Vec<_>>().join(", ")
+            )
+        });
         res += "}";
         res
     }
@@ -325,7 +297,6 @@ impl Context {
                 Context {
                     elems: new_elems,
                     types: self.types.clone(),
-                    data_constructors: self.data_constructors.clone(),
                 }
             }
             None => unreachable!(),
@@ -395,20 +366,10 @@ impl Context {
     }
 
     fn find_var(&self, var: &str) -> Option<Type> {
-        for elem in self.elems.iter() {
-            match elem {
-                ContextElem::Anno(v, ty) if var == v => return Some(ty.clone()),
-                _ => {}
-            }
-        }
-
-        for dtor in self.data_constructors.iter() {
-            if dtor.name == *var {
-                return Some(dtor.ty.clone());
-            }
-        }
-
-        None
+        self.elems.iter().find_map(|e| match e {
+            ContextElem::Anno(v, ty) if v == var => Some(ty.clone()),
+            _ => None,
+        })
     }
 
     /// solve (ΓL,α^,ΓR) α τ = (ΓL,α = τ,ΓR)
@@ -417,7 +378,6 @@ impl Context {
         let mut ctx = Context {
             elems: gamma_l,
             types: self.types.clone(),
-            data_constructors: self.data_constructors.clone(),
         };
         if ctx.wf_type(&ty) {
             ctx.push(ContextElem::ExVarSolved(ex.to_string(), ty));
@@ -443,7 +403,6 @@ impl Context {
         tmp_elems.extend(vars.iter().map(|v| ContextElem::Universal(v.clone())));
         let tmp_ctx = Context {
             types: self.types.clone(),
-            data_constructors: self.data_constructors.clone(),
             elems: tmp_elems,
         };
 
@@ -579,7 +538,9 @@ impl ContextElem {
 pub enum TypeError {
     Subtype(Type, Type),
     UnknownVar(String),
-    UnknownDataConstructor(String),
+    UnknownType(String),
+    UnknownDataConstructor(Dtor),
+    WrongConstructorArity(Dtor, usize, usize),
     InvalidAnnotation(Type),
     IsNotAFunction(Type),
     ExistentialEscaped(Context, Type, String),
@@ -600,8 +561,13 @@ impl TypeError {
                 format!("Can't figure out subtyping between: {} <: {}", ty1, ty2)
             }
             TypeError::UnknownVar(var) => format!("Unknown variable: {}", var),
-            TypeError::UnknownDataConstructor(dtor) => {
+            TypeError::UnknownType(ty) => {
+                format!("Unknown type: {}", ty)
+            }            TypeError::UnknownDataConstructor(dtor) => {
                 format!("Unknown data constructor: {}", dtor)
+            }
+            TypeError::WrongConstructorArity(dtor, expected, actual) => {
+                format!("Wrong constructor arity {} arguments we're supplied, but {} expects {}", actual, dtor, expected)
             }
             TypeError::InvalidAnnotation(ty) => format!("{} is not a valid annotation here.", ty),
             TypeError::IsNotAFunction(ty) => format!("{} is not a function", ty),
@@ -619,6 +585,7 @@ impl TypeError {
 #[derive(Debug, PartialEq, Eq, Default)]
 pub struct TypeChecker {
     name_gen: NameGen,
+    types: HashMap<String, Vec<DataConstructor>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Default)]
@@ -642,6 +609,21 @@ impl NameGen {
 impl TypeChecker {
     pub fn new() -> TypeChecker {
         Default::default()
+    }
+
+    fn add_type_declaration(&mut self, ty_decl: TypeDeclaration) {
+        self.types.insert(ty_decl.name, ty_decl.constructors);
+    }
+
+    fn find_data_constructor(&self, dtor: &Dtor) -> Result<&DataConstructor, TypeError> {
+        let dtors = self
+            .types
+            .get(&dtor.ty)
+            .ok_or(TypeError::UnknownType(dtor.ty.to_string()))?;
+        dtors
+            .iter()
+            .find(|d| d.name == dtor.name)
+            .ok_or(TypeError::UnknownDataConstructor(dtor.clone()))
     }
 
     /// Instantiates all bound type variables for a Polytype with fresh vars,
@@ -907,10 +889,8 @@ impl TypeChecker {
         ty: &Type,
     ) -> Result<(Context, Match<Var>), TypeError> {
         // Ignoring binders for now
-        let ty_dtor = ctx
-            .find_var(&case.data_constructor.name)
-            .ok_or_else(|| TypeError::UnknownDataConstructor(case.data_constructor.clone().name))?;
-
+        let data_constructor = self.find_data_constructor(&case.data_constructor)?;
+        let ty_dtor = Type::Constructor(case.data_constructor.ty.clone());
         let ctx = self.unify(ctx, &ty_dtor, ty_match)?;
         // TODO bring binders into scope here
         let (ctx, typed_expr) = self.check(ctx, &case.expr, ty)?;
@@ -1144,7 +1124,28 @@ impl TypeChecker {
                     },
                 ))
             }
-            Expr::Construction { dtor, args } => panic!("TODO Implement this"),
+            Expr::Construction { dtor, args } => {
+                let DataConstructor { fields, .. } = self.find_data_constructor(&dtor)?;
+                if args.len() != fields.len() {
+                    return Err(TypeError::WrongConstructorArity(dtor.clone(), fields.len(), args.len()))
+                }
+                let mut typed_fields = vec![];
+                let mut ctx = ctx;
+                for (arg, ty) in args.iter().zip(fields.clone()) {
+                    let (new_ctx, typed_field) = self.check(ctx, &arg, &ty)?;
+                    ctx = new_ctx;
+                    typed_fields.push(typed_field);
+                }
+
+                Ok((
+                    ctx,
+                    Type::Constructor(dtor.ty.to_string()),
+                    Expr::Construction {
+                        dtor: dtor.clone(),
+                        args: typed_fields,
+                    }
+                    ))
+            },
             Expr::Case { expr, cases } => {
                 let (ctx, ty_expr, typed_expr) = self.infer(ctx, expr)?;
 
@@ -1186,17 +1187,8 @@ impl TypeChecker {
         ty_match: &Type,
     ) -> Result<(Context, Type, Match<Var>), TypeError> {
         // Ignoring binders for now
-        let ty_dtor: Type;
-        match ctx.find_var(&case.data_constructor.name) {
-            None => {
-                return Err(TypeError::UnknownDataConstructor(
-                    case.data_constructor.name.clone(),
-                ));
-            }
-            Some(dtor) => {
-                ty_dtor = dtor;
-            }
-        }
+        let data_constructor = self.find_data_constructor(&case.data_constructor)?;
+        let ty_dtor = Type::Constructor(case.data_constructor.ty.clone());
 
         let ctx = self.unify(ctx, &ty_dtor, ty_match)?;
         let (ctx, ty_expr, typed_expr) = self.infer(ctx, &case.expr)?;
@@ -1295,18 +1287,9 @@ impl TypeChecker {
 
         for decl in prog {
             match decl {
-                Declaration::Type(TypeDeclaration { name, constructors }) => {
-                    ctx.add_type(TypeDefinition {
-                        name: name.clone(),
-                        type_parameters: vec![],
-                    });
-                    for constructor in &constructors {
-                        ctx.add_constructor(Type::Constructor(name.clone()), constructor.clone())
-                    }
-                    result.push((
-                        Declaration::Type(TypeDeclaration { name, constructors }),
-                        Type::int(),
-                    ))
+                Declaration::Type(type_decl) => {
+                    self.add_type_declaration(type_decl.clone());
+                    result.push((Declaration::Type(type_decl), Type::int()))
                 }
                 Declaration::Value(ValueDeclaration { name, expr }) => {
                     debug!(
