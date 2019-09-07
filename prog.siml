@@ -41,13 +41,15 @@ let main : Int =
 let tuple_test : Int =
   fst (\x. x, true) (snd (snd (true, (true, 2))));
 
-type Day (Monday, Tuesday, Wednesday, Thursday, Friday);
-type Color (Red, Green);
+type Day { Monday(), Tuesday(), Wednesday(), Thursday(), Friday() }
+type Color { Red(), Green() }
 
-type Location (Loc Int Int);
+type Location {
+  Loc(Int, Int)
+}
 
-let red : Color = Red;
-let green : Color = Green;
+let red : Color = Color::Red();
+let green : Color = Color::Green();
 
 let match_test : Int =
   let day_of_week =
@@ -58,4 +60,4 @@ let match_test : Int =
       Thursday => 4,
       Friday => 5,
     } in
-  day_of_week Wednesday;
+  day_of_week Day::Wednesday();

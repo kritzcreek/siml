@@ -77,7 +77,7 @@ fn run_wasm_file() {
 }
 
 fn main() {
-    let use_wasm = true;
+    let use_wasm = false;
     setup_logger();
     if use_wasm {
         run_wasm_file();

@@ -101,6 +101,14 @@ impl Lowering {
                 arity: 2,
                 values: vec![self.lower_expr(*fst), self.lower_expr(*snd)],
             },
+            Expr::Construction { dtor, args } => {
+                let tag = self.tag_for_constructor(dtor.name).unwrap();
+                Term::Pack {
+                    tag,
+                    arity: args.len() as u32,
+                    values: args.into_iter().map(|arg| self.lower_expr(arg)).collect(),
+                }
+            }
             Expr::Case { expr, cases } => Term::Case {
                 expr: Box::new(self.lower_expr(*expr)),
                 cases: cases.into_iter().map(|m| self.lower_match(m)).collect(),

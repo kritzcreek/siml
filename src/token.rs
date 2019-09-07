@@ -11,6 +11,7 @@ pub enum Token {
     LBrace,
     RBrace,
     Colon,
+    DoubleColon,
     Semi,
     Comma,
     Arrow,
@@ -21,6 +22,7 @@ pub enum Token {
     In,
     Type,
     Ident(String),
+    UpperIdent(String),
     IntLiteral(i32),
     BooleanLiteral(bool),
 }
@@ -87,7 +89,14 @@ impl<'input> Iterator for Lexer<'input> {
             Some(')') => Some(Token::RParen),
             Some('{') => Some(Token::LBrace),
             Some('}') => Some(Token::RBrace),
-            Some(':') => Some(Token::Colon),
+            Some(':') => {
+                if self.peek() == Some(':') {
+                    self.next();
+                    Some(Token::DoubleColon)
+                } else {
+                    Some(Token::Colon)
+                }
+            }
             Some(';') => Some(Token::Semi),
             Some(',') => Some(Token::Comma),
             Some('=') => {
@@ -134,7 +143,13 @@ impl<'input> Iterator for Lexer<'input> {
                     "in" => Some(Token::In),
                     "match" => Some(Token::Match),
                     "type" => Some(Token::Type),
-                    _ => Some(Token::Ident(res)),
+                    _ => {
+                        if res.chars().next().unwrap().is_uppercase() {
+                            Some(Token::UpperIdent(res))
+                        } else {
+                            Some(Token::Ident(res))
+                        }
+                    }
                 }
             }
             _ => None,

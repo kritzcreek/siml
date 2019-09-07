@@ -142,6 +142,11 @@ impl Match<Var> {
         }
     }
 }
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Dtor {
+    pub ty: String,
+    pub name: String,
+}
 
 /// The AST for expressions. It's parameterized over its variable
 /// names. This is done so the type checker can insert type
@@ -164,6 +169,10 @@ pub enum Expr<B> {
     Var(B),
     Literal(Literal),
     Tuple(Box<Expr<B>>, Box<Expr<B>>),
+    Construction {
+        dtor: Dtor,
+        args: Vec<Expr<B>>,
+    },
     Case {
         expr: Box<Expr<B>>,
         cases: Vec<Match<B>>,
@@ -209,6 +218,10 @@ impl<B> Expr<B> {
             },
             Expr::Literal(lit) => Expr::Literal(lit),
             Expr::Tuple(fst, snd) => Expr::Tuple(Box::new(fst.map(f)), Box::new(snd.map(f))),
+            Expr::Construction { dtor, args } => Expr::Construction {
+                dtor,
+                args: args.into_iter().map(|e| e.map(f)).collect(),
+            },
             Expr::Case { expr, cases } => Expr::Case {
                 expr: Box::new(expr.map(f)),
                 cases: cases.into_iter().map(|case| case.map(f)).collect(),
@@ -290,6 +303,16 @@ impl<B> Expr<B> {
                 )
                 .append(Doc::text(")"))
                 .group(),
+            Expr::Construction { dtor, args } => Doc::text(&dtor.ty)
+                .append(Doc::text("::"))
+                .append(Doc::text(&dtor.name))
+                .append(Doc::text("("))
+                .append(Doc::intersperse(
+                    args.iter().map(|arg| arg.to_doc()),
+                    Doc::text(",").append(Doc::space()),
+                ))
+                .append(Doc::text(")"))
+                .group(),
             Expr::Case { expr, cases } => Doc::text("match")
                 .append(Doc::space())
                 .append(expr.to_doc())
@@ -349,6 +372,11 @@ impl<B> Expr<B> {
             Expr::Tuple(fst, snd) => {
                 fst.subst_mut(var, replacement);
                 snd.subst_mut(var, replacement);
+            }
+            Expr::Construction { args, .. } => {
+                for arg in args {
+                    arg.subst_mut(var, replacement);
+                }
             }
             Expr::Case { expr, cases } => {
                 expr.subst_mut(var, replacement);
@@ -415,6 +443,13 @@ impl<B> Expr<B> {
             Expr::Tuple(fst, snd) => fst.free_vars().union(&snd.free_vars()).cloned().collect(),
             Expr::Literal(_) => HashSet::new(),
             Expr::Ann { expr, .. } => expr.free_vars(),
+            Expr::Construction { args, .. } => {
+                let mut res = HashSet::new();
+                for arg in args {
+                    res.extend(arg.free_vars())
+                }
+                res
+            }
             Expr::Case { expr, cases } => {
                 let mut res = expr.free_vars();
                 for case in cases {
@@ -475,6 +510,11 @@ impl TypedExpr {
             Expr::Tuple(fst, snd) => {
                 fst.subst_var_mut(&var, replacement);
                 snd.subst_var_mut(var, replacement);
+            }
+            Expr::Construction { args, .. } => {
+                for arg in args {
+                    arg.subst_var_mut(var, replacement);
+                }
             }
             Expr::Case { expr, cases } => {
                 expr.subst_var_mut(&var, replacement);

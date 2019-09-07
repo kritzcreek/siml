@@ -587,6 +587,12 @@ pub enum TypeError {
     Unification(Type, Type),
 }
 
+impl fmt::Display for TypeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.print())
+    }
+}
+
 impl TypeError {
     pub fn print(&self) -> String {
         match self {
@@ -901,17 +907,9 @@ impl TypeChecker {
         ty: &Type,
     ) -> Result<(Context, Match<Var>), TypeError> {
         // Ignoring binders for now
-        let ty_dtor: Type;
-        match ctx.find_var(&case.data_constructor) {
-            None => {
-                return Err(TypeError::UnknownDataConstructor(
-                    case.data_constructor.clone(),
-                ));
-            }
-            Some(dtor) => {
-                ty_dtor = dtor;
-            }
-        }
+        let ty_dtor = ctx
+            .find_var(&case.data_constructor)
+            .ok_or_else(|| TypeError::UnknownDataConstructor(case.data_constructor.clone()))?;
 
         let ctx = self.unify(ctx, &ty_dtor, ty_match)?;
         // TODO bring binders into scope here
@@ -1146,6 +1144,7 @@ impl TypeChecker {
                     },
                 ))
             }
+            Expr::Construction { dtor, args } => panic!("TODO Implement this"),
             Expr::Case { expr, cases } => {
                 let (ctx, ty_expr, typed_expr) = self.infer(ctx, expr)?;
 

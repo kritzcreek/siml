@@ -7,6 +7,7 @@ grammar;
 extern {
     enum Token {
         "identifier" => Token::Ident(<String>),
+        "upper_identifier" => Token::UpperIdent(<String>),
         "int_literal" => Token::IntLiteral(<i32>),
         "bool_literal" => Token::BooleanLiteral(<bool>),
         "forall" => Token::Forall,
@@ -24,6 +25,7 @@ extern {
         "->" => Token::Arrow,
         "=>" => Token::FatArrow,
         ":" => Token::Colon,
+        "::" => Token::DoubleColon,
         "," => Token::Comma,
         ";" => Token::Semi,
     }
@@ -40,12 +42,12 @@ pub Declaration: Declaration<String> = {
        { expr: Expr::Ann { expr: Box::new(expr), ty },
          name: name.to_string()
        }),
- "type" <name: "identifier"> "(" <constructors: CommaSep<DataConstructor>> ")" ";" =>
+ "type" <name: "upper_identifier"> "{" <constructors: CommaSep<DataConstructor>> "}" =>
    Declaration::Type(TypeDeclaration { name: name.to_string(), constructors })
 }
 
 DataConstructor: DataConstructor = {
-  <name: "identifier"> <fields: Type*> => DataConstructor { name: name.to_string(), fields }
+  <name: "upper_identifier"> "(" <fields: CommaSep<Type>> ")" => DataConstructor { name: name.to_string(), fields }
 }
 
 pub Expr: ParserExpr = {
@@ -64,7 +66,8 @@ pub Expr: ParserExpr = {
 }
 
 pub Match: Match<String> = {
-  <dtor: "identifier"> "=>" <expr: Expr> =>
+  // TODO
+  <dtor: "upper_identifier"> "=>" <expr: Expr> =>
     Match { data_constructor: dtor, binders: vec![], expr }
 };
 
@@ -72,6 +75,9 @@ ExprAtom: ParserExpr = {
     "identifier" => Expr::Var(<>.to_string()),
     "int_literal" => Expr::Literal(Literal::Int(<>)),
     "bool_literal" => Expr::Literal(Literal::Bool(<>)),
+    <ty: "upper_identifier"> "::" <name: "upper_identifier"> "(" <args: CommaSep<Expr>> ")" => {
+      Expr::Construction { dtor: Dtor { ty, name }, args }
+    },
     "(" <e:Expr> ":" <t:Type> ")" => Expr::Ann{ ty: t, expr: Box::new(e) },
     "(" <fst:Expr> "," <snd:Expr> ")" => Expr::Tuple(Box::new(fst), Box::new(snd)),
     "(" <e:Expr> ")" => e,
@@ -90,13 +96,8 @@ pub Type: Type = {
 TypeAtom: Type = {
     "(" <t:Type> ")" => t,
     "(" <fst:Type> "," <snd:Type> ")" => Type::Tuple(Box::new(fst), Box::new(snd)),
-    <i:"identifier"> => {
-      if i.chars().next().unwrap().is_lowercase() {
-          Type::Var(i)
-      } else {
-          Type::Constructor(i)
-      }
-    }
+    <i:"identifier"> => Type::Var(i),
+    <i:"upper_identifier"> => Type::Constructor(i),
 }
 
 // Also allows trailing commas

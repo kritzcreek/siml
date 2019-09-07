@@ -184,6 +184,9 @@ impl Codegen {
                     ds,
                 ))
             }
+            Expr::Construction { .. } => {
+                Err(CodegenError::NotImplemented("construction".to_string()))
+            }
             Expr::Case { .. } => Err(CodegenError::NotImplemented("case".to_string())),
             Expr::Tuple { .. } => Err(CodegenError::NotImplemented("tuple".to_string())),
         }
@@ -243,6 +246,9 @@ impl Codegen {
                 ty,
             }),
             Expr::Tuple(..) => Err(CodegenError::NotImplemented("tuple".to_string())),
+            Expr::Construction { .. } => {
+                Err(CodegenError::NotImplemented("construction".to_string()))
+            }
             Expr::Case { .. } => Err(CodegenError::NotImplemented("case".to_string())),
         }
     }
@@ -289,6 +295,9 @@ impl Codegen {
             }
             Expr::Lambda { .. } => Err(CodegenError::NotImplemented("lambda".to_string())),
             Expr::Tuple(..) => Err(CodegenError::NotImplemented("tuple".to_string())),
+            Expr::Construction { .. } => {
+                Err(CodegenError::NotImplemented("construction".to_string()))
+            }
             Expr::Case { .. } => Err(CodegenError::NotImplemented("case".to_string())),
         }
     }
