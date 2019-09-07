@@ -1,4 +1,4 @@
-use crate::expr::{Declaration, Expr, HasIdent, Literal, Match, TypeDeclaration};
+use crate::expr::{Declaration, Expr, HasIdent, Literal, Case, TypeDeclaration};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -109,14 +109,14 @@ impl Lowering {
                     values: args.into_iter().map(|arg| self.lower_expr(arg)).collect(),
                 }
             }
-            Expr::Case { expr, cases } => Term::Case {
+            Expr::Match { expr, cases } => Term::Case {
                 expr: Box::new(self.lower_expr(*expr)),
                 cases: cases.into_iter().map(|m| self.lower_match(m)).collect(),
             },
         }
     }
 
-    fn lower_match<B: HasIdent>(&self, match_: Match<B>) -> TermMatch {
+    fn lower_match<B: HasIdent>(&self, match_: Case<B>) -> TermMatch {
         TermMatch {
             tag: self
                 .tag_for_constructor(match_.data_constructor.name)

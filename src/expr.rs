@@ -98,18 +98,18 @@ impl HasIdent for Var {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Match<B> {
+pub struct Case<B> {
     pub data_constructor: Dtor,
     pub binders: Vec<B>,
     pub expr: Expr<B>,
 }
 
-impl<B> Match<B> {
-    pub fn map<A: Sized, F>(self, f: &F) -> Match<A>
+impl<B> Case<B> {
+    pub fn map<A: Sized, F>(self, f: &F) -> Case<A>
     where
         F: Fn(B) -> A,
     {
-        Match {
+        Case {
             data_constructor: self.data_constructor,
             binders: self.binders.into_iter().map(|binder| f(binder)).collect(),
             expr: self.expr.map(f),
@@ -155,7 +155,7 @@ impl<B> Match<B> {
     }
 }
 
-impl Match<Var> {
+impl Case<Var> {
     pub fn subst_var_mut(&mut self, var: &str, replacement: &str) {
         if !self.binders.iter().any(|binder| var == binder.name) {
             self.expr.subst_var_mut(var, replacement)
@@ -199,9 +199,9 @@ pub enum Expr<B> {
         dtor: Dtor,
         args: Vec<Expr<B>>,
     },
-    Case {
+    Match {
         expr: Box<Expr<B>>,
-        cases: Vec<Match<B>>,
+        cases: Vec<Case<B>>,
     },
     Ann {
         expr: Box<Expr<B>>,
@@ -248,7 +248,7 @@ impl<B> Expr<B> {
                 dtor,
                 args: args.into_iter().map(|e| e.map(f)).collect(),
             },
-            Expr::Case { expr, cases } => Expr::Case {
+            Expr::Match { expr, cases } => Expr::Match {
                 expr: Box::new(expr.map(f)),
                 cases: cases.into_iter().map(|case| case.map(f)).collect(),
             },
@@ -339,7 +339,7 @@ impl<B> Expr<B> {
                 ))
                 .append(Doc::text(")"))
                 .group(),
-            Expr::Case { expr, cases } => Doc::text("match")
+            Expr::Match { expr, cases } => Doc::text("match")
                 .append(Doc::space())
                 .append(expr.to_doc())
                 .append(Doc::text("{"))
@@ -404,7 +404,7 @@ impl<B> Expr<B> {
                     arg.subst_mut(var, replacement);
                 }
             }
-            Expr::Case { expr, cases } => {
+            Expr::Match { expr, cases } => {
                 expr.subst_mut(var, replacement);
                 for case in cases {
                     case.subst_mut(var, replacement);
@@ -476,7 +476,7 @@ impl<B> Expr<B> {
                 }
                 res
             }
-            Expr::Case { expr, cases } => {
+            Expr::Match { expr, cases } => {
                 let mut res = expr.free_vars();
                 for case in cases {
                     res.extend(case.free_vars())
@@ -542,7 +542,7 @@ impl TypedExpr {
                     arg.subst_var_mut(var, replacement);
                 }
             }
-            Expr::Case { expr, cases } => {
+            Expr::Match { expr, cases } => {
                 expr.subst_var_mut(&var, replacement);
                 for case in cases {
                     case.subst_var_mut(var, replacement);

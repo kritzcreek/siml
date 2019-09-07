@@ -56,8 +56,8 @@ pub Expr: ParserExpr = {
         Expr::Lambda { binder: binder.to_string(), body: Box::new(body) },
     "let" <binder: "identifier"> "=" <expr: Expr> "in" <body: Expr> =>
         Expr::Let { binder: binder.to_string(), expr: Box::new(expr), body: Box::new(body) },
-    "match" <expr: Expr> "{" <cases: CommaSep<Match>> "}" =>
-        Expr::Case { expr: Box::new(expr), cases },
+    "match" <expr: Expr> "{" <cases: CommaSep<Case>> "}" =>
+        Expr::Match { expr: Box::new(expr), cases },
     <function: ExprAtom> <arguments: ExprAtom+> => {
         arguments
           .into_iter()
@@ -65,9 +65,9 @@ pub Expr: ParserExpr = {
     },
 }
 
-pub Match: Match<String> = {
+pub Case: Case<String> = {
   <dtor: Dtor> "(" <binders: CommaSep<"identifier">> ")" "=>" <expr: Expr> =>
-    Match { data_constructor: dtor, binders, expr }
+    Case { data_constructor: dtor, binders, expr }
 };
 
 Dtor: Dtor = {

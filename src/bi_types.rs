@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::expr::{DataConstructor, Declaration, Expr, Literal, Match, ParserExpr, TypeDeclaration, TypedExpr, ValueDeclaration, Var, Dtor};
+use crate::expr::{DataConstructor, Declaration, Expr, Literal, Case, ParserExpr, TypeDeclaration, TypedExpr, ValueDeclaration, Var, Dtor};
 use crate::pretty::render_doc;
 use pretty::{BoxDoc, Doc};
 use std::collections::{HashMap, HashSet};
@@ -884,10 +884,10 @@ impl TypeChecker {
     fn check_case(
         &mut self,
         ctx: Context,
-        case: &Match<String>,
+        case: &Case<String>,
         ty_match: &Type,
         ty: &Type,
-    ) -> Result<(Context, Match<Var>), TypeError> {
+    ) -> Result<(Context, Case<Var>), TypeError> {
         // Ignoring binders for now
         let data_constructor = self.find_data_constructor(&case.data_constructor)?;
         let ty_dtor = Type::Constructor(case.data_constructor.ty.clone());
@@ -897,7 +897,7 @@ impl TypeChecker {
 
         Ok((
             ctx,
-            Match {
+            Case {
                 data_constructor: case.data_constructor.clone(),
                 binders: vec![],
                 expr: typed_expr,
@@ -978,7 +978,7 @@ impl TypeChecker {
                     },
                 ))
             }
-            (Expr::Case { expr, cases }, ty) => {
+            (Expr::Match { expr, cases }, ty) => {
                 let (mut ctx, ty_expr, typed_expr) = self.infer(ctx, expr)?;
                 let mut typed_cases = vec![];
                 for case in cases.iter() {
@@ -989,7 +989,7 @@ impl TypeChecker {
                 }
                 Ok((
                     ctx,
-                    Expr::Case {
+                    Expr::Match {
                         expr: Box::new(typed_expr),
                         cases: typed_cases,
                     },
@@ -1146,7 +1146,7 @@ impl TypeChecker {
                     }
                     ))
             },
-            Expr::Case { expr, cases } => {
+            Expr::Match { expr, cases } => {
                 let (ctx, ty_expr, typed_expr) = self.infer(ctx, expr)?;
 
                 let mut cases_iter = cases.iter();
@@ -1162,7 +1162,7 @@ impl TypeChecker {
                 Ok((
                     ctx,
                     ty_res,
-                    Expr::Case {
+                    Expr::Match {
                         expr: Box::new(typed_expr),
                         cases: typed_cases,
                     },
@@ -1183,9 +1183,9 @@ impl TypeChecker {
     fn infer_case(
         &mut self,
         ctx: Context,
-        case: &Match<String>,
+        case: &Case<String>,
         ty_match: &Type,
-    ) -> Result<(Context, Type, Match<Var>), TypeError> {
+    ) -> Result<(Context, Type, Case<Var>), TypeError> {
         // Ignoring binders for now
         let data_constructor = self.find_data_constructor(&case.data_constructor)?;
         let ty_dtor = Type::Constructor(case.data_constructor.ty.clone());
@@ -1196,7 +1196,7 @@ impl TypeChecker {
         Ok((
             ctx,
             ty_expr,
-            Match {
+            Case {
                 data_constructor: case.data_constructor.clone(),
                 // TODO
                 binders: vec![],
