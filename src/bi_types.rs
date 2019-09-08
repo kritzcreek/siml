@@ -586,7 +586,9 @@ impl TypeError {
                 format!("Occurs check failed when unifying {} with type {}", var, ty)
             }
             TypeError::Unification(ty1, ty2) => format!("Failed to unify {} with {}", ty1, ty2),
-            TypeError::CantInferMatch => "Can't infer type for a match, please provide an annotation".to_string(),
+            TypeError::CantInferMatch => {
+                "Can't infer type for a match, please provide an annotation".to_string()
+            }
         }
     }
 }
@@ -904,8 +906,12 @@ impl TypeChecker {
         let ty_dtor: Type = Type::Constructor(case.data_constructor.ty.clone());
         let ctx = self.unify(ctx, &ty_dtor, ty_match)?;
 
-        let binders: Vec<(String, Type)> =
-            case.binders.clone().into_iter().zip(data_constructor.fields).collect();
+        let binders: Vec<(String, Type)> = case
+            .binders
+            .clone()
+            .into_iter()
+            .zip(data_constructor.fields)
+            .collect();
 
         let (ctx, typed_case, typed_binders) =
             self.check_renamed_many(ctx, binders, &case.expr, ty_case)?;
@@ -1229,7 +1235,7 @@ impl TypeChecker {
                     Expr::tuple(typed_fst, typed_snd),
                 ))
             }
-            Expr::Match { .. } => Err(TypeError::CantInferMatch)
+            Expr::Match { .. } => Err(TypeError::CantInferMatch),
         }
     }
 
