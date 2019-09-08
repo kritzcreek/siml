@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 
-use crate::expr::{DataConstructor, Declaration, Expr, Literal, Case, ParserExpr, TypeDeclaration, TypedExpr, ValueDeclaration, Var, Dtor};
+use crate::expr::{
+    Case, DataConstructor, Declaration, Dtor, Expr, Literal, ParserExpr, TypeDeclaration,
+    TypedExpr, ValueDeclaration, Var,
+};
 use crate::pretty::render_doc;
 use pretty::{BoxDoc, Doc};
 use std::collections::{HashMap, HashSet};
@@ -138,7 +141,7 @@ impl Type {
     pub fn int() -> Self {
         Type::Constructor("Int".to_string())
     }
-    pub fn boolean() -> Self {
+    pub fn bool() -> Self {
         Type::Constructor("Bool".to_string())
     }
 
@@ -249,7 +252,11 @@ impl Context {
             res += &format!(
                 "  type {} ({}),\n",
                 ty,
-                dtors.iter().map(|dtor| format!("{}", dtor)).collect::<Vec<_>>().join(", ")
+                dtors
+                    .iter()
+                    .map(|dtor| format!("{}", dtor))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )
         });
         res += "}";
@@ -546,6 +553,7 @@ pub enum TypeError {
     ExistentialEscaped(Context, Type, String),
     OccursCheck(String, Type),
     Unification(Type, Type),
+    CantInferMatch,
 }
 
 impl fmt::Display for TypeError {
@@ -561,14 +569,14 @@ impl TypeError {
                 format!("Can't figure out subtyping between: {} <: {}", ty1, ty2)
             }
             TypeError::UnknownVar(var) => format!("Unknown variable: {}", var),
-            TypeError::UnknownType(ty) => {
-                format!("Unknown type: {}", ty)
-            }            TypeError::UnknownDataConstructor(dtor) => {
+            TypeError::UnknownType(ty) => format!("Unknown type: {}", ty),
+            TypeError::UnknownDataConstructor(dtor) => {
                 format!("Unknown data constructor: {}", dtor)
             }
-            TypeError::WrongConstructorArity(dtor, expected, actual) => {
-                format!("Wrong constructor arity {} arguments we're supplied, but {} expects {}", actual, dtor, expected)
-            }
+            TypeError::WrongConstructorArity(dtor, expected, actual) => format!(
+                "Wrong constructor arity {} arguments we're supplied, but {} expects {}",
+                actual, dtor, expected
+            ),
             TypeError::InvalidAnnotation(ty) => format!("{} is not a valid annotation here.", ty),
             TypeError::IsNotAFunction(ty) => format!("{} is not a function", ty),
             TypeError::ExistentialEscaped(ctx, ty, ex) => {
@@ -578,6 +586,7 @@ impl TypeError {
                 format!("Occurs check failed when unifying {} with type {}", var, ty)
             }
             TypeError::Unification(ty1, ty2) => format!("Failed to unify {} with {}", ty1, ty2),
+            TypeError::CantInferMatch => "Can't infer type for a match, please provide an annotation".to_string(),
         }
     }
 }
@@ -615,7 +624,7 @@ impl TypeChecker {
         self.types.insert(ty_decl.name, ty_decl.constructors);
     }
 
-    fn find_data_constructor(&self, dtor: &Dtor) -> Result<&DataConstructor, TypeError> {
+    fn find_data_constructor(&self, dtor: &Dtor) -> Result<DataConstructor, TypeError> {
         let dtors = self
             .types
             .get(&dtor.ty)
@@ -623,6 +632,7 @@ impl TypeChecker {
         dtors
             .iter()
             .find(|d| d.name == dtor.name)
+            .cloned()
             .ok_or(TypeError::UnknownDataConstructor(dtor.clone()))
     }
 
@@ -886,23 +896,113 @@ impl TypeChecker {
         ctx: Context,
         case: &Case<String>,
         ty_match: &Type,
-        ty: &Type,
+        ty_case: &Type,
     ) -> Result<(Context, Case<Var>), TypeError> {
-        // Ignoring binders for now
         let data_constructor = self.find_data_constructor(&case.data_constructor)?;
-        let ty_dtor = Type::Constructor(case.data_constructor.ty.clone());
+
+        // Make sure the type of the case constructor matches the type of the matched expression
+        let ty_dtor: Type = Type::Constructor(case.data_constructor.ty.clone());
         let ctx = self.unify(ctx, &ty_dtor, ty_match)?;
-        // TODO bring binders into scope here
-        let (ctx, typed_expr) = self.check(ctx, &case.expr, ty)?;
+
+        let binders: Vec<(String, Type)> =
+            case.binders.clone().into_iter().zip(data_constructor.fields).collect();
+
+        let (ctx, typed_case, typed_binders) =
+            self.check_renamed_many(ctx, binders, &case.expr, ty_case)?;
 
         Ok((
             ctx,
             Case {
                 data_constructor: case.data_constructor.clone(),
-                binders: vec![],
-                expr: typed_expr,
+                binders: typed_binders,
+                expr: typed_case,
             },
         ))
+    }
+
+    fn check_renamed(
+        &mut self,
+        ctx: Context,
+        binder: (String, Type),
+        expr: &ParserExpr,
+        type_check: &Type,
+    ) -> Result<(Context, TypedExpr, Var), TypeError> {
+        self.check_renamed_many(ctx, vec![binder], expr, type_check)
+            .map(|(ctx, expr, vars)| (ctx, expr, vars[0].clone()))
+    }
+
+    fn check_renamed_many(
+        &mut self,
+        ctx: Context,
+        binders: Vec<(String, Type)>,
+        expr: &ParserExpr,
+        type_check: &Type,
+    ) -> Result<(Context, TypedExpr, Vec<Var>), TypeError> {
+        let binder_mapping: Vec<(String, Type, String)> = binders
+            .into_iter()
+            .map(|(name, ty)| (name, ty, self.name_gen.fresh_var()))
+            .collect();
+        // Insert fresh names
+        let expr = expr.subst_many(
+            binder_mapping
+                .iter()
+                .map(|(b, _, fresh)| (b.clone(), Expr::Var(fresh.clone())))
+                .collect(),
+        );
+        let mut binder_iter = binder_mapping.iter();
+
+        let mut typed_binders = vec![];
+
+        let (ctx, typed_expr) = match binder_iter.next() {
+            None => self.check(ctx, &expr, type_check)?,
+            Some((_, first_ty, first_binder)) => {
+                // Setting up the context by adding binders
+                let mut ctx = ctx;
+                let marker = ContextElem::Anno(first_binder.clone(), first_ty.clone());
+                ctx.push(marker.clone());
+                for (_, ty, binder) in binder_iter {
+                    ctx.push(ContextElem::Anno(binder.to_string(), ty.clone()));
+                }
+
+                // Actually check the case's body
+                let (mut ctx, typed_case) = self.check(ctx, &expr, type_check)?;
+
+                typed_binders = binder_mapping
+                    .iter()
+                    .map(|(name, _, fresh)| {
+                        let ty_binder = ctx
+                            .find_var(&fresh)
+                            .expect("var disappeared in bracket_rename")
+                            .clone();
+                        Var {
+                            name: name.clone(),
+                            ty: ty_binder.clone(),
+                        }
+                    })
+                    .collect();
+                // clean up the context
+                ctx.drop_marker(marker);
+                (ctx, typed_case)
+            }
+        };
+
+        // Reversing the renaming
+        let typed_expr = typed_expr.subst_many(
+            binder_mapping
+                .into_iter()
+                .map(|(binder, ty, fresh_binder)| {
+                    (
+                        fresh_binder,
+                        Expr::Var(Var {
+                            name: binder,
+                            ty: ty.clone(),
+                        }),
+                    )
+                })
+                .collect(),
+        );
+
+        Ok((ctx, typed_expr, typed_binders))
     }
 
     fn check(
@@ -914,34 +1014,16 @@ impl TypeChecker {
         debug!("[checking] {} |- {} : {}", ctx, expr, ty);
         match (expr, ty) {
             (Expr::Literal(Literal::Int(i)), ty) if ty == &Type::int() => Ok((ctx, Expr::int(*i))),
-            (Expr::Literal(Literal::Bool(b)), ty) if ty == &Type::boolean() => {
+            (Expr::Literal(Literal::Bool(b)), ty) if ty == &Type::bool() => {
                 Ok((ctx, Expr::bool(*b)))
             }
             (Expr::Lambda { binder, body }, Type::Fun { arg, result }) => {
-                // ->l
-                let mut new_ctx = ctx;
-                let binder_fresh = self.name_gen.fresh_var();
-                let marker = ContextElem::Anno(binder_fresh.clone(), *arg.clone());
-                new_ctx.push(marker.clone());
-                let (mut res_ctx, typed_body) = self.check(
-                    new_ctx,
-                    &body.subst(binder, &Expr::Var(binder_fresh.clone())),
-                    result,
-                )?;
-                let ty_binder = res_ctx
-                    .find_var(&binder_fresh)
-                    .expect("var disappeared in bi_types")
-                    .clone();
-                res_ctx.drop_marker(marker);
-                // Revert the renaming, so the expression contains the original names again
-                let typed_body = typed_body.subst_var(&binder_fresh, binder);
+                let (res_ctx, typed_body, typed_binder) =
+                    self.check_renamed(ctx, (binder.clone(), *arg.clone()), body, result)?;
                 Ok((
                     res_ctx,
                     Expr::Lambda {
-                        binder: Var {
-                            name: binder.clone(),
-                            ty: ty_binder,
-                        },
+                        binder: typed_binder,
                         body: Box::new(typed_body),
                     },
                 ))
@@ -954,35 +1036,22 @@ impl TypeChecker {
             }
             (Expr::Let { binder, expr, body }, ty) => {
                 let (ctx, ty_binder, typed_expr) = self.infer(ctx, expr)?;
-                let mut new_ctx = ctx;
-                let binder_fresh = self.name_gen.fresh_var();
-                let marker = ContextElem::Anno(binder_fresh.clone(), ty_binder.clone());
-                new_ctx.push(marker.clone());
-                let (mut res_ctx, typed_body) = self.check(
-                    new_ctx,
-                    &body.subst(binder, &Expr::Var(binder_fresh.clone())),
-                    ty,
-                )?;
-                let ty_binder = res_ctx.apply(&ty_binder);
-                res_ctx.drop_marker(marker);
-                let typed_body = typed_body.subst_var(&binder_fresh, binder);
+                let (ctx, typed_body, typed_binder) =
+                    self.check_renamed(ctx, (binder.clone(), ty_binder.clone()), body, ty)?;
                 Ok((
-                    res_ctx,
+                    ctx,
                     Expr::Let {
-                        binder: Var {
-                            name: binder.to_string(),
-                            ty: ty_binder,
-                        },
+                        binder: typed_binder,
                         expr: Box::new(typed_expr),
                         body: Box::new(typed_body),
                     },
                 ))
             }
             (Expr::Match { expr, cases }, ty) => {
-                let (mut ctx, ty_expr, typed_expr) = self.infer(ctx, expr)?;
+                let (mut ctx, ty_match, typed_expr) = self.infer(ctx, expr)?;
                 let mut typed_cases = vec![];
                 for case in cases.iter() {
-                    let ty_expr = &ctx.apply(&ty_expr);
+                    let ty_expr = &ctx.apply(&ty_match);
                     let (new_ctx, typed_case) = self.check_case(ctx, case, &ty_expr, ty)?;
                     ctx = new_ctx;
                     typed_cases.push(typed_case);
@@ -1026,7 +1095,7 @@ impl TypeChecker {
     ) -> Result<(Context, Type, TypedExpr), TypeError> {
         match expr {
             Expr::Literal(Literal::Int(i)) => Ok((ctx, Type::int(), Expr::int(*i))),
-            Expr::Literal(Literal::Bool(b)) => Ok((ctx, Type::boolean(), Expr::bool(*b))),
+            Expr::Literal(Literal::Bool(b)) => Ok((ctx, Type::bool(), Expr::bool(*b))),
             Expr::Var(var) => {
                 // Var
                 let res = match ctx.find_var(var) {
@@ -1127,7 +1196,11 @@ impl TypeChecker {
             Expr::Construction { dtor, args } => {
                 let DataConstructor { fields, .. } = self.find_data_constructor(&dtor)?;
                 if args.len() != fields.len() {
-                    return Err(TypeError::WrongConstructorArity(dtor.clone(), fields.len(), args.len()))
+                    return Err(TypeError::WrongConstructorArity(
+                        dtor.clone(),
+                        fields.len(),
+                        args.len(),
+                    ));
                 }
                 let mut typed_fields = vec![];
                 let mut ctx = ctx;
@@ -1143,31 +1216,10 @@ impl TypeChecker {
                     Expr::Construction {
                         dtor: dtor.clone(),
                         args: typed_fields,
-                    }
-                    ))
-            },
-            Expr::Match { expr, cases } => {
-                let (ctx, ty_expr, typed_expr) = self.infer(ctx, expr)?;
-
-                let mut cases_iter = cases.iter();
-                let (mut ctx, ty_case, typed_case) =
-                    self.infer_case(ctx, cases_iter.next().unwrap(), &ty_expr)?;
-                let ty_res = ty_case;
-                let mut typed_cases = vec![typed_case];
-                for case in cases_iter {
-                    let (new_ctx, typed_case) = self.check_case(ctx, case, &ty_expr, &ty_res)?;
-                    ctx = new_ctx;
-                    typed_cases.push(typed_case);
-                }
-                Ok((
-                    ctx,
-                    ty_res,
-                    Expr::Match {
-                        expr: Box::new(typed_expr),
-                        cases: typed_cases,
                     },
                 ))
             }
+
             Expr::Tuple(fst, snd) => {
                 let (ctx, fst_ty, typed_fst) = self.infer(ctx, fst)?;
                 let (ctx, snd_ty, typed_snd) = self.infer(ctx, snd)?;
@@ -1177,32 +1229,8 @@ impl TypeChecker {
                     Expr::tuple(typed_fst, typed_snd),
                 ))
             }
+            Expr::Match { .. } => Err(TypeError::CantInferMatch)
         }
-    }
-
-    fn infer_case(
-        &mut self,
-        ctx: Context,
-        case: &Case<String>,
-        ty_match: &Type,
-    ) -> Result<(Context, Type, Case<Var>), TypeError> {
-        // Ignoring binders for now
-        let data_constructor = self.find_data_constructor(&case.data_constructor)?;
-        let ty_dtor = Type::Constructor(case.data_constructor.ty.clone());
-
-        let ctx = self.unify(ctx, &ty_dtor, ty_match)?;
-        let (ctx, ty_expr, typed_expr) = self.infer(ctx, &case.expr)?;
-
-        Ok((
-            ctx,
-            ty_expr,
-            Case {
-                data_constructor: case.data_constructor.clone(),
-                // TODO
-                binders: vec![],
-                expr: typed_expr,
-            },
-        ))
     }
 
     fn infer_application(

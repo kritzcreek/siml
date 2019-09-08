@@ -1,4 +1,4 @@
-use crate::expr::{Declaration, Expr, HasIdent, Literal, Case, TypeDeclaration};
+use crate::expr::{Case, Declaration, Expr, HasIdent, Literal, TypeDeclaration};
 use std::collections::HashMap;
 use std::fmt;
 

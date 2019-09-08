@@ -45,13 +45,13 @@ type Day { Monday(), Tuesday(), Wednesday(), Thursday(), Friday() }
 type Color { Red(), Green() }
 
 type Location {
-  Loc(Int, Int)
+  Loc(Int, Bool)
 }
 
 let red : Color = Color::Red();
 let green : Color = Color::Green();
 
-let my_loc : Int -> Location = \x.
+let my_loc : Bool -> Location = \x.
   Location::Loc(1, x);
 
 let latitude : Location -> Int =
@@ -69,3 +69,8 @@ let match_test : Int =
       Day::Friday() => 5,
     } in
   day_of_week Day::Wednesday();
+
+let ltest : Bool -> Int =
+  \x. let x = 21 in x;
+
+let main : Int = ltest true;

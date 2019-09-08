@@ -358,6 +358,17 @@ impl<B> Expr<B> {
         }
     }
 
+    pub fn subst_many(&self, substs: Vec<(String, Expr<B>)>) -> Expr<B>
+    where
+        B: HasIdent + Clone,
+    {
+        let mut expr = self.clone();
+        for (var, replacement) in substs {
+            expr.subst_mut(&var, &replacement);
+        }
+        expr
+    }
+
     pub fn subst(&self, var: &str, replacement: &Expr<B>) -> Expr<B>
     where
         B: HasIdent + Clone,
