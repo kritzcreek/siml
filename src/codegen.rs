@@ -1,42 +1,16 @@
 use crate::bi_types::Type;
-use crate::expr::{Declaration, Expr, HasIdent, Literal, TypedExpr, ValueDeclaration, Var};
+use crate::expr::{Case, Declaration, Expr, HasIdent, Literal, TypedExpr, ValueDeclaration, Var};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-#[derive(Debug)]
-pub enum CodegenError {
-    NotImplemented(String),
-}
-
-impl fmt::Display for CodegenError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                CodegenError::NotImplemented(str) => {
-                    format!("Codegen not implemented for: {}", str)
-                }
-            }
-        )
-    }
-}
-
-#[derive(Default)]
-pub struct Codegen {
+#[derive(Debug, Default)]
+pub struct Lowering {
     supply: u32,
-    /// A mapping from names to their index in the function table as well as their type
-    global_names: HashMap<String, (u32, Type)>,
-    out: String,
 }
 
-impl Codegen {
-    pub fn new() -> Codegen {
-        Codegen {
-            supply: 0,
-            global_names: HashMap::new(),
-            out: String::new(),
-        }
+impl Lowering {
+    pub fn new() -> Lowering {
+        Default::default()
     }
 
     fn fresh_name(&mut self, s: String) -> String {
@@ -48,45 +22,32 @@ impl Codegen {
         self.fresh_name("$".to_owned())
     }
 
-    fn populate_global_names(&mut self, prog: &[(Declaration<Var>, Type)]) {
-        let mut index_supply: u32 = 0;
-        let mut global_names = HashMap::new();
-        for decl in prog {
-            if let (Declaration::Value(ValueDeclaration { name, .. }), ty) = decl {
-                global_names.insert(name.to_string(), (index_supply, ty.clone()));
-                index_supply += 1;
+    pub fn lower(
+        &mut self,
+        prog: Vec<(Declaration<Var>, Type)>,
+    ) -> Result<Vec<(Declaration<Var>, Type)>, CodegenError> {
+        let mut res = vec![];
+        for (decl, ty) in prog {
+            match decl {
+                Declaration::Type(..) => res.push((decl, ty)),
+                Declaration::Value(value_decl) => {
+                    let (expr, decls) = self.lambda_lift(value_decl.expr)?;
+                    res.extend(
+                        decls
+                            .into_iter()
+                            .map(|(vd, ty)| (Declaration::Value(vd), ty)),
+                    );
+                    res.push((
+                        Declaration::Value(ValueDeclaration {
+                            name: value_decl.name,
+                            expr,
+                        }),
+                        ty,
+                    ))
+                }
             }
         }
-        self.global_names = global_names;
-    }
-
-    pub fn codegen(mut self, prog: &[(Declaration<Var>, Type)]) -> Result<String, CodegenError> {
-        self.populate_global_names(prog);
-        self.out += "(module\n";
-        self.rts();
-        for decl in prog {
-            if let (Declaration::Value(ValueDeclaration { name, expr }), ty) = decl {
-                let (expr, decls) = self.lambda_lift(expr.clone())?;
-                let start_size = self.global_names.len();
-                for (ix, (decl, ty)) in decls.iter().enumerate() {
-                    self.global_names
-                        .insert(decl.name.clone(), ((start_size + ix) as u32, ty.clone()));
-                }
-                for (decl, ty) in decls {
-                    self.fun(&decl.name, &decl.expr, &ty)?
-                }
-                self.fun(name, &expr, ty)?;
-            }
-        }
-        self.entry_point();
-        self.function_table();
-        self.out += "\n)";
-        Ok(self.out)
-    }
-
-    fn rts(&mut self) {
-        self.out += ALLOCATOR_RTS;
-        self.out += CLOSURE_RTS;
+        Ok(res)
     }
 
     pub fn lambda_lift(
@@ -184,12 +145,123 @@ impl Codegen {
                     ds,
                 ))
             }
-            Expr::Construction { .. } => {
-                Err(CodegenError::NotImplemented("construction".to_string()))
+            Expr::Construction { dtor, args } => {
+                let mut ds = vec![];
+                let mut lifted_args = vec![];
+                for arg in args {
+                    let (lifted_expr, current_ds) = self.lambda_lift_inner(arg)?;
+                    lifted_args.push(lifted_expr);
+                    ds.extend(current_ds);
+                }
+                Ok((
+                    Expr::Construction {
+                        dtor,
+                        args: lifted_args,
+                    },
+                    ds,
+                ))
             }
-            Expr::Match { .. } => Err(CodegenError::NotImplemented("case".to_string())),
+            Expr::Match { expr, cases } => {
+                let (lifted_expr, mut ds) = self.lambda_lift_inner(*expr)?;
+                let mut lifted_cases = vec![];
+                for Case {
+                    data_constructor,
+                    binders,
+                    expr,
+                } in cases
+                {
+                    let (lifted_case, current_ds) = self.lambda_lift_inner(expr)?;
+                    lifted_cases.push(Case {
+                        data_constructor,
+                        binders,
+                        expr: lifted_case,
+                    });
+                    ds.extend(current_ds)
+                }
+                Ok((
+                    Expr::Match {
+                        expr: Box::new(lifted_expr),
+                        cases: lifted_cases,
+                    },
+                    ds,
+                ))
+            }
             Expr::Tuple { .. } => Err(CodegenError::NotImplemented("tuple".to_string())),
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum CodegenError {
+    NotImplemented(String),
+}
+
+impl fmt::Display for CodegenError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                CodegenError::NotImplemented(str) => {
+                    format!("Codegen not implemented for: {}", str)
+                }
+            }
+        )
+    }
+}
+
+#[derive(Default)]
+pub struct Codegen {
+    supply: u32,
+    /// A mapping from names to their index in the function table as well as their type
+    global_names: HashMap<String, (u32, Type)>,
+    out: String,
+}
+
+impl Codegen {
+    pub fn new() -> Codegen {
+        Codegen {
+            supply: 0,
+            global_names: HashMap::new(),
+            out: String::new(),
+        }
+    }
+
+    fn fresh_name(&mut self, s: String) -> String {
+        self.supply += 1;
+        format!("{}{}", s, self.supply)
+    }
+
+    fn populate_global_names(&mut self, prog: &[(Declaration<Var>, Type)]) {
+        let mut index_supply: u32 = 0;
+        let mut global_names = HashMap::new();
+        for decl in prog {
+            if let (Declaration::Value(ValueDeclaration { name, .. }), ty) = decl {
+                global_names.insert(name.to_string(), (index_supply, ty.clone()));
+                index_supply += 1;
+            }
+        }
+        self.global_names = global_names;
+    }
+
+    pub fn codegen(mut self, prog: &[(Declaration<Var>, Type)]) -> Result<String, CodegenError> {
+        self.populate_global_names(prog);
+        self.out += "(module\n";
+        self.rts();
+        for decl in prog {
+            if let (Declaration::Value(ValueDeclaration { name, expr }), ty) = decl {
+                self.fun(name, &expr, ty)?;
+            }
+        }
+        self.entry_point();
+        self.function_table();
+        self.out += "\n)";
+        Ok(self.out)
+    }
+
+    fn rts(&mut self) {
+        self.out += ALLOCATOR_RTS;
+        self.out += CLOSURE_RTS;
     }
 
     pub fn let_lift(
@@ -457,7 +529,7 @@ mod tests {
     fn lambda_lifting() {
         let my_expr = expr("(\\x. add 1 ((\\y. \\x. add y x) 4 6)) ((\\x. x) 3)");
 
-        let mut cg = Codegen::new();
+        let mut cg = Lowering::new();
         let (lifted, ds) = cg.lambda_lift_inner(my_expr).unwrap();
         println!("{}", lifted);
         for (vd, _) in ds {
