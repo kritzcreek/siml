@@ -143,15 +143,18 @@ impl<B> Case<B> {
         Doc::text(&self.data_constructor.ty)
             .append(Doc::text("::"))
             .append(Doc::text(&self.data_constructor.name))
-            .append(Doc::space())
+            .group()
+            .append(Doc::text("("))
             .append(Doc::intersperse(
                 self.binders.iter().map(|x| Doc::text(x.ident())),
                 Doc::space(),
             ))
+            .append(Doc::text(")"))
             .append(Doc::space())
             .append(Doc::text("=>"))
             .append(Doc::space())
             .append(self.expr.to_doc())
+            .group()
     }
 }
 
@@ -511,6 +514,13 @@ impl<B> Expr<B> {
 }
 
 impl TypedExpr {
+    pub fn subst_var_many(mut self, mappings: Vec<(&str, &str)>) -> TypedExpr {
+        for (var, replacement) in mappings {
+            self.subst_var_mut(var, replacement);
+        }
+        self
+    }
+
     pub fn subst_var(mut self, var: &str, replacement: &str) -> TypedExpr {
         self.subst_var_mut(var, replacement);
         self

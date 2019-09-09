@@ -227,9 +227,9 @@ impl Codegen {
         }
     }
 
-    fn fresh_name(&mut self, s: String) -> String {
+    fn fresh_name(&mut self, s: &str) -> String {
         self.supply += 1;
-        format!("{}{}", s, self.supply)
+        format!("${}{}", s, self.supply)
     }
 
     fn populate_global_names(&mut self, prog: &[(Declaration<Var>, Type)]) {
@@ -264,6 +264,85 @@ impl Codegen {
         self.out += CLOSURE_RTS;
     }
 
+    pub fn case_lift(
+        &mut self,
+        expr: TypedExpr,
+    ) -> Result<(TypedExpr, HashSet<String>), CodegenError> {
+        let mut used: HashSet<String> = HashSet::new();
+        Ok((self.case_lift_inner(&mut used, expr)?, used))
+    }
+
+    fn case_lift_inner(
+        &mut self,
+        used: &mut HashSet<String>,
+        expr: TypedExpr,
+    ) -> Result<Expr<Var>, CodegenError> {
+        match expr {
+            Expr::App { func, arg } => Ok(Expr::App {
+                func: Box::new(self.case_lift_inner(used, *func)?),
+                arg: Box::new(self.case_lift_inner(used, *arg)?),
+            }),
+            Expr::Lambda { binder, body } => Ok(Expr::Lambda {
+                binder,
+                body: Box::new(self.case_lift_inner(used, *body)?),
+            }),
+            Expr::Let { binder, expr, body } => Ok(Expr::Let {
+                binder,
+                expr: Box::new(self.case_lift_inner(used, *expr)?),
+                body: Box::new(self.case_lift_inner(used, *body)?),
+            }),
+            Expr::Var(var) => Ok(Expr::Var(var)),
+            Expr::Literal(lit) => Ok(Expr::Literal(lit)),
+            Expr::Ann { expr, ty } => Ok(Expr::Ann {
+                expr: Box::new(self.case_lift_inner(used, *expr)?),
+                ty,
+            }),
+            Expr::Tuple(..) => Err(CodegenError::NotImplemented("tuple".to_string())),
+            Expr::Construction { dtor, args } => {
+                let mut lifted_args = vec![];
+                for arg in args {
+                    lifted_args.push(self.case_lift_inner(used, arg)?)
+                }
+                Ok(Expr::Construction {
+                    dtor,
+                    args: lifted_args,
+                })
+            }
+            Expr::Match { expr, cases } => {
+                let lifted_expr = self.case_lift_inner(used, *expr)?;
+                let max_binders = cases
+                    .iter()
+                    .fold(0, |acc, case| usize::max(acc, case.binders.len()));
+                let mut fresh_binders = Vec::with_capacity(max_binders);
+                for _ in 1..=max_binders {
+                    fresh_binders.push(self.fresh_name("case"))
+                }
+                used.extend(fresh_binders.clone());
+
+                let mut lifted_cases: Vec<Case<Var>> = Vec::with_capacity(cases.len());
+                for Case {
+                    data_constructor,
+                    binders,
+                    expr,
+                } in cases
+                {
+                    let case_binders: Vec<(&Var, &String)> = binders.iter().zip(fresh_binders.iter()).collect();
+                    let renamed_expr = expr.subst_var_many(case_binders.iter().map(|(v, fresh)| (v.name.as_str(), fresh.as_str())).collect());
+                    let lifted_expr = self.case_lift_inner(used, renamed_expr)?;
+                    lifted_cases.push(Case {
+                        data_constructor,
+                        binders: case_binders.into_iter().map(|(v, new)| Var { name: new.to_string(), ty: v.ty.clone() }).collect(),
+                        expr: lifted_expr,
+                    })
+                }
+                Ok(Expr::Match {
+                    expr: Box::new(lifted_expr),
+                    cases: lifted_cases,
+                })
+            }
+        }
+    }
+
     pub fn let_lift(
         &mut self,
         expr: TypedExpr,
@@ -290,7 +369,7 @@ impl Codegen {
                 let fresh_binder;
                 let mut body = body;
                 if used.contains(&binder.ident()) {
-                    fresh_binder = self.fresh_name(binder.ident());
+                    fresh_binder = self.fresh_name(&binder.ident());
                     body.subst_mut(
                         &binder.ident(),
                         &Expr::Var(Var {
@@ -318,10 +397,36 @@ impl Codegen {
                 ty,
             }),
             Expr::Tuple(..) => Err(CodegenError::NotImplemented("tuple".to_string())),
-            Expr::Construction { .. } => {
-                Err(CodegenError::NotImplemented("construction".to_string()))
+            Expr::Construction { dtor, args } => {
+                let mut lifted_args = vec![];
+                for arg in args {
+                    lifted_args.push(self.let_lift_inner(used, arg)?)
+                }
+                Ok(Expr::Construction {
+                    dtor,
+                    args: lifted_args,
+                })
             }
-            Expr::Match { .. } => Err(CodegenError::NotImplemented("case".to_string())),
+            Expr::Match { expr, cases } => {
+                let mut lifted_cases = vec![];
+                let lifted_expr = self.let_lift_inner(used, *expr)?;
+                for Case {
+                    data_constructor,
+                    binders,
+                    expr,
+                } in cases
+                {
+                    lifted_cases.push(Case {
+                        data_constructor,
+                        binders,
+                        expr: self.let_lift_inner(used, expr)?,
+                    });
+                }
+                Ok(Expr::Match {
+                    expr: Box::new(lifted_expr),
+                    cases: lifted_cases,
+                })
+            }
         }
     }
 
@@ -379,6 +484,7 @@ impl Codegen {
         // TODO Got to handle duplicate binders here (or somewhere earlier)
         let (binders, body) = expr.clone().collapse_lambdas();
         let (body, let_binders) = self.let_lift(body)?;
+        let (body, case_binders) = self.case_lift(body)?;
         let mut args = ty.unfold_fun();
         // All results are i32's anyway
         let _res = args.pop();
@@ -392,8 +498,10 @@ impl Codegen {
         for binder in binders.iter() {
             self.out += &format!("(local ${} i32)\n", binder.name)
         }
-
         for binder in let_binders.iter() {
+            self.out += &format!("(local ${} i32)\n", binder)
+        }
+        for binder in case_binders.iter() {
             self.out += &format!("(local ${} i32)\n", binder)
         }
         for (ix, binder) in binders.iter().enumerate() {
@@ -491,6 +599,54 @@ const CLOSURE_RTS: &str = r#"
           ;; If we're still missing arguments we bump the applied counter and return the new closure
           (i32.store (i32.add (get_local $closure) (i32.const 4)) (i32.add (get_local $applied) (i32.const 1)))
           (get_local $closure))))
+
+ (func $construct_pack_1 (param $tag i32) (param $val1 i32) (result i32)
+       (local $pack_start i32)
+       (set_local $pack_start (call $allocate (i32.const 12)))
+       (i32.store (local.get $pack_start) (local.get $tag))
+       ;; Writing the arity
+       (i32.store (i32.add (local.get $pack_start) (i32.const 4)) (i32.const 1))
+       ;; Writing the values
+       (i32.store (i32.add (local.get $pack_start) (i32.const 8)) (local.get $val1))
+       (local.get $pack_start))
+
+ (func $construct_pack_2 (param $tag i32) (param $val1 i32) (param $val2 i32) (result i32)
+       (local $pack_start i32)
+       (set_local $pack_start (call $allocate (i32.const 16)))
+       (i32.store (local.get $pack_start) (local.get $tag))
+       ;; Writing the arity
+       (i32.store (i32.add (local.get $pack_start) (i32.const 4)) (i32.const 2))
+       ;; Writing the values
+       (i32.store (i32.add (local.get $pack_start) (i32.const 8)) (local.get $val1))
+       (i32.store (i32.add (local.get $pack_start) (i32.const 12)) (local.get $val2))
+       (local.get $pack_start))
+
+ (func $construct_pack_3 (param $tag i32) (param $val1 i32) (param $val2 i32) (param $val3 i32) (result i32)
+       (local $pack_start i32)
+       (set_local $pack_start (call $allocate (i32.const 16)))
+       (i32.store (local.get $pack_start) (local.get $tag))
+       ;; Writing the arity
+       (i32.store (i32.add (local.get $pack_start) (i32.const 4)) (i32.const 3))
+       ;; Writing the values
+       (i32.store (i32.add (local.get $pack_start) (i32.const 8)) (local.get $val1))
+       (i32.store (i32.add (local.get $pack_start) (i32.const 12)) (local.get $val2))
+       (i32.store (i32.add (local.get $pack_start) (i32.const 16)) (local.get $val4))
+       (local.get $pack_start))
+
+ (func $get_pack_tag (param $pack_start i32) (result i32)
+       (i32.load (local.get $pack_start)))
+
+ (func $get_pack_field (param $pack_start i32) (param $ix i32) (result i32)
+       (if (result i32)
+           (i32.lt_s (local.get $ix) (i32.load (i32.add (local.get $pack_start) (i32.const 4))))
+         (then
+          (i32.load
+           (i32.add
+            (i32.add (i32.const 8)
+                     (i32.mul (local.get $ix) (i32.const 4)))
+            (local.get $pack_start))))
+         (else unreachable)))
+
 "#;
 
 #[cfg(test)]
@@ -523,6 +679,17 @@ mod tests {
             names,
             HashSet::from_iter(vec!["hello1".to_string(), "hello".to_string()].into_iter())
         );
+    }
+
+    #[test]
+    fn case_lifting() {
+        let my_expr = expr("match x { E::R(x) => match x { E::R(x) => x, E::L(y) => y }, E::L(x) => x }");
+
+        let mut cg = Codegen::new();
+        let (lifted, names) = cg.case_lift(my_expr).unwrap();
+        println!("{}", lifted);
+        println!("{:?}", names);
+        assert!(true);
     }
 
     #[test]

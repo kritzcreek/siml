@@ -1,5 +1,14 @@
 let add : Int -> Int -> Int =
   \x. \y. primadd;
 
+type Either {
+  Left(Int),
+  Right(Int),
+}
+
 let main : Int =
-  (\x. add 1 ((\y. \x. add y x) 4 7)) ((\x. x) 4);
+  let x = Either::Right(0) in
+  match x {
+    Either::Left(x) => add x 5,
+    Either::Right(x) => add x 10,
+  };
