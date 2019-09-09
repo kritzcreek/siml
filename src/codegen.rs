@@ -1,7 +1,252 @@
 use crate::bi_types::Type;
-use crate::expr::{Case, Declaration, Expr, HasIdent, Literal, TypedExpr, ValueDeclaration, Var};
+use crate::expr::{
+    Case, DataConstructor, Declaration, Expr, HasIdent, Literal, TypeDeclaration, TypedExpr,
+    ValueDeclaration, Var,
+};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct IR {
+    pub globals: Vec<IRDeclaration>,
+    pub entry_point: String,
+}
+
+type IRDeclaration = IRDeclarationF<IRExpression>;
+type IRLiftedDecl = IRDeclarationF<TypedExpr>;
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct IRDeclarationF<E> {
+    pub name: String,
+    pub arguments: Vec<String>,
+    pub locals: Vec<String>,
+    pub expr: E,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum IRExpression {
+    App {
+        func: Box<IRExpression>,
+        args: Vec<IRExpression>,
+    },
+    Let {
+        binder: String,
+        expr: Box<IRExpression>,
+        body: Box<IRExpression>,
+    },
+    // Is there an opportunity to differentiate locals from globals here?
+    Var(String),
+    Literal(Literal),
+    Pack {
+        tag: u32,
+        args: Vec<IRExpression>,
+    },
+    Match {
+        expr: Box<IRExpression>,
+        cases: Vec<IRCase>,
+    },
+}
+
+#[derive(Debug, Default)]
+pub struct IRLowering {
+    supply: u32,
+    globals: Vec<String>,
+    types: HashMap<String, Vec<DataConstructor>>,
+}
+
+impl IRLowering {
+    pub fn new() -> Lowering {
+        Default::default()
+    }
+
+    fn add_type_declaration(&mut self, ty_decl: TypeDeclaration) {
+        self.types.insert(ty_decl.name, ty_decl.constructors);
+    }
+
+    fn fresh_name(&mut self, s: String) -> String {
+        self.supply += 1;
+        format!("${}{}", s, self.supply)
+    }
+
+    fn fresh_top_name(&mut self) -> String {
+        self.fresh_name("".to_owned())
+    }
+
+    pub fn lower(&mut self, prog: Vec<(Declaration<Var>, Type)>) -> Result<IR, CodegenError> {
+        let mut values = vec![];
+        for (decl, _) in prog {
+            match decl {
+                Declaration::Value(vd) => values.push(vd),
+                Declaration::Type(td) => self.add_type_declaration(td),
+            }
+        }
+
+        for value in values {
+            let (arguments, body) = value.collapse_lambdas();
+            let (lifted_body, new_globals) = self.lambda_lift(body)?;
+
+        }
+
+        Err(CodegenError::NotImplemented("lower_ir".to_string()))
+    }
+
+    fn lower_expr(
+        &mut self,
+        expr: TypedExpr,
+    ) -> Result<(IRExpression, Vec<IRDeclaration>), CodegenError> {
+        match expr {
+            Expr::Lambda {..} => Err(CodegenError::NotImplemented("Can't lower lambdas".to_string())),
+            _ => Err(CodegenError::NotImplemented("lower_ir".to_string())),
+        }
+    }
+
+    pub fn lambda_lift(
+        &mut self,
+        expr: TypedExpr,
+    ) -> Result<(TypedExpr, Vec<IRLiftedDecl>), CodegenError> {
+        match expr {
+            Expr::Lambda { .. } => {
+                let (binders, body) = expr.collapse_lambdas();
+                let (lifted_body, ds) = self.lambda_lift_inner(body)?;
+                let lam = binders
+                    .into_iter()
+                    .rev()
+                    .fold(lifted_body, |expr, b| Expr::Lambda {
+                        binder: b,
+                        body: Box::new(expr),
+                    });
+                Ok((lam, ds))
+            }
+            _ => self.lambda_lift_inner(expr),
+        }
+    }
+
+    pub fn lambda_lift_inner(
+        &mut self,
+        expr: TypedExpr,
+    ) -> Result<(TypedExpr, Vec<(ValueDeclaration<Var>, Type)>), CodegenError> {
+        match expr {
+            Expr::Var(_) => Ok((expr, vec![])),
+            Expr::Literal(_) => Ok((expr, vec![])),
+            Expr::App { func, arg } => {
+                let (lifted_func, mut d1) = self.lambda_lift_inner(*func)?;
+                let (lifted_arg, d2) = self.lambda_lift_inner(*arg)?;
+                d1.extend(d2);
+                Ok((
+                    Expr::App {
+                        func: Box::new(lifted_func),
+                        arg: Box::new(lifted_arg),
+                    },
+                    d1,
+                ))
+            }
+            Expr::Ann { ty, expr } => {
+                let (lifted_expr, ds) = self.lambda_lift_inner(*expr)?;
+                Ok((
+                    Expr::Ann {
+                        ty,
+                        expr: Box::new(lifted_expr),
+                    },
+                    ds,
+                ))
+            }
+            Expr::Let { binder, expr, body } => {
+                let (lifted_expr, mut d1) = self.lambda_lift_inner(*expr)?;
+                let (lifted_body, d2) = self.lambda_lift_inner(*body)?;
+                d1.extend(d2);
+                Ok((
+                    Expr::Let {
+                        binder,
+                        expr: Box::new(lifted_expr),
+                        body: Box::new(lifted_body),
+                    },
+                    d1,
+                ))
+            }
+            Expr::Lambda { .. } => {
+                let (binders, body) = expr.collapse_lambdas();
+                let binders_len = binders.len();
+                let fresh_name = self.fresh_top_name();
+                let (lifted_body, mut ds) = self.lambda_lift_inner(body)?;
+                let value_decl = ValueDeclaration {
+                    name: fresh_name.clone(),
+                    expr: binders
+                        .into_iter()
+                        .rev()
+                        .fold(lifted_body, |e, b| Expr::Lambda {
+                            binder: b,
+                            body: Box::new(e),
+                        }),
+                };
+
+                // TODO Figure out the actual type here
+                // So far we're just creating a function type with enough arguments
+                // so we generate the right WASM signature
+                let ty = std::iter::repeat(Type::int())
+                    .take(binders_len)
+                    .fold(Type::int(), |acc, ty| Type::fun(ty, acc));
+
+                ds.push((value_decl, ty.clone()));
+                Ok((
+                    Expr::Var(Var {
+                        name: fresh_name,
+                        ty,
+                    }),
+                    ds,
+                ))
+            }
+            Expr::Construction { dtor, args } => {
+                let mut ds = vec![];
+                let mut lifted_args = vec![];
+                for arg in args {
+                    let (lifted_expr, current_ds) = self.lambda_lift_inner(arg)?;
+                    lifted_args.push(lifted_expr);
+                    ds.extend(current_ds);
+                }
+                Ok((
+                    Expr::Construction {
+                        dtor,
+                        args: lifted_args,
+                    },
+                    ds,
+                ))
+            }
+            Expr::Match { expr, cases } => {
+                let (lifted_expr, mut ds) = self.lambda_lift_inner(*expr)?;
+                let mut lifted_cases = vec![];
+                for Case {
+                    data_constructor,
+                    binders,
+                    expr,
+                } in cases
+                    {
+                        let (lifted_case, current_ds) = self.lambda_lift_inner(expr)?;
+                        lifted_cases.push(Case {
+                            data_constructor,
+                            binders,
+                            expr: lifted_case,
+                        });
+                        ds.extend(current_ds)
+                    }
+                Ok((
+                    Expr::Match {
+                        expr: Box::new(lifted_expr),
+                        cases: lifted_cases,
+                    },
+                    ds,
+                ))
+            }
+            Expr::Tuple { .. } => Err(CodegenError::NotImplemented("tuple".to_string())),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct IRCase {
+    pub tag: u32,
+    pub binders: Vec<String>,
+    pub expr: IRExpression,
+}
 
 #[derive(Debug, Default)]
 pub struct Lowering {
@@ -326,12 +571,24 @@ impl Codegen {
                     expr,
                 } in cases
                 {
-                    let case_binders: Vec<(&Var, &String)> = binders.iter().zip(fresh_binders.iter()).collect();
-                    let renamed_expr = expr.subst_var_many(case_binders.iter().map(|(v, fresh)| (v.name.as_str(), fresh.as_str())).collect());
+                    let case_binders: Vec<(&Var, &String)> =
+                        binders.iter().zip(fresh_binders.iter()).collect();
+                    let renamed_expr = expr.subst_var_many(
+                        case_binders
+                            .iter()
+                            .map(|(v, fresh)| (v.name.as_str(), fresh.as_str()))
+                            .collect(),
+                    );
                     let lifted_expr = self.case_lift_inner(used, renamed_expr)?;
                     lifted_cases.push(Case {
                         data_constructor,
-                        binders: case_binders.into_iter().map(|(v, new)| Var { name: new.to_string(), ty: v.ty.clone() }).collect(),
+                        binders: case_binders
+                            .into_iter()
+                            .map(|(v, new)| Var {
+                                name: new.to_string(),
+                                ty: v.ty.clone(),
+                            })
+                            .collect(),
                         expr: lifted_expr,
                     })
                 }
@@ -683,7 +940,8 @@ mod tests {
 
     #[test]
     fn case_lifting() {
-        let my_expr = expr("match x { E::R(x) => match x { E::R(x) => x, E::L(y) => y }, E::L(x) => x }");
+        let my_expr =
+            expr("match x { E::R(x) => match x { E::R(x) => x, E::L(y) => y }, E::L(x) => x }");
 
         let mut cg = Codegen::new();
         let (lifted, names) = cg.case_lift(my_expr).unwrap();
