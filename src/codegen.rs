@@ -1,6 +1,6 @@
 use crate::bi_types::Type;
 use crate::expr::{
-    Case, DataConstructor, Declaration, Expr, HasIdent, Literal, TypeDeclaration, TypedExpr,
+    Case, DataConstructor, Declaration, Dtor, Expr, HasIdent, Literal, TypeDeclaration, TypedExpr,
     ValueDeclaration, Var,
 };
 use std::collections::{HashMap, HashSet};
@@ -12,15 +12,12 @@ pub struct IR {
     pub entry_point: String,
 }
 
-type IRDeclaration = IRDeclarationF<IRExpression>;
-type IRLiftedDecl = IRDeclarationF<TypedExpr>;
-
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct IRDeclarationF<E> {
+pub struct IRDeclaration {
     pub name: String,
     pub arguments: Vec<String>,
     pub locals: Vec<String>,
-    pub expr: E,
+    pub expr: IRExpression,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -55,7 +52,7 @@ pub struct IRLowering {
 }
 
 impl IRLowering {
-    pub fn new() -> Lowering {
+    pub fn new() -> IRLowering {
         Default::default()
     }
 
@@ -63,180 +60,160 @@ impl IRLowering {
         self.types.insert(ty_decl.name, ty_decl.constructors);
     }
 
-    fn fresh_name(&mut self, s: String) -> String {
+    fn fresh_name(&mut self, s: &str) -> String {
         self.supply += 1;
         format!("${}{}", s, self.supply)
     }
 
     fn fresh_top_name(&mut self) -> String {
-        self.fresh_name("".to_owned())
+        self.fresh_name("")
+    }
+
+    fn find_data_constructor(&self, dtor: &Dtor) -> Result<(usize, usize), CodegenError> {
+        let dtors = self
+            .types
+            .get(&dtor.ty)
+            .ok_or(CodegenError::UnknownType(dtor.ty.to_string()))?;
+        dtors
+            .iter()
+            .enumerate()
+            .find_map(|(ix, d)| {
+                if d.name == dtor.name {
+                    Some((ix + 1, d.fields.len()))
+                } else {
+                    None
+                }
+            })
+            .ok_or(CodegenError::UnknownDataConstructor(dtor.clone()))
     }
 
     pub fn lower(&mut self, prog: Vec<(Declaration<Var>, Type)>) -> Result<IR, CodegenError> {
-        let mut values = vec![];
+        let mut globals = vec![];
         for (decl, _) in prog {
             match decl {
-                Declaration::Value(vd) => values.push(vd),
+                Declaration::Value(vd) => {
+                    let (g, gs) = self.lower_decl(vd)?;
+                    globals.extend(gs);
+                    globals.push(g);
+                }
                 Declaration::Type(td) => self.add_type_declaration(td),
             }
         }
 
-        for value in values {
-            let (arguments, body) = value.collapse_lambdas();
-            let (lifted_body, new_globals) = self.lambda_lift(body)?;
+        Ok(IR {
+            globals,
+            entry_point: "main".to_string(),
+        })
+    }
 
-        }
-
-        Err(CodegenError::NotImplemented("lower_ir".to_string()))
+    fn lower_decl(
+        &mut self,
+        decl: ValueDeclaration<Var>,
+    ) -> Result<(IRDeclaration, Vec<IRDeclaration>), CodegenError> {
+        let (arguments, expr) = decl.expr.collapse_lambdas();
+        let (lowered_expr, locals, globals) = self.lower_expr(expr)?;
+        Ok((
+            IRDeclaration {
+                name: decl.name,
+                arguments: arguments.into_iter().map(|v| v.name).collect(),
+                expr: lowered_expr,
+                locals,
+            },
+            globals,
+        ))
     }
 
     fn lower_expr(
         &mut self,
         expr: TypedExpr,
-    ) -> Result<(IRExpression, Vec<IRDeclaration>), CodegenError> {
+    ) -> Result<(IRExpression, Vec<String>, Vec<IRDeclaration>), CodegenError> {
         match expr {
-            Expr::Lambda {..} => Err(CodegenError::NotImplemented("Can't lower lambdas".to_string())),
-            _ => Err(CodegenError::NotImplemented("lower_ir".to_string())),
-        }
-    }
+            Expr::Ann { expr, .. } => self.lower_expr(*expr),
+            Expr::Literal(lit) => Ok((IRExpression::Literal(lit), vec![], vec![])),
+            Expr::Var(v) => Ok((IRExpression::Var(v.name), vec![], vec![])),
+            Expr::Tuple { .. } => Err(CodegenError::NotImplemented(
+                "Can't lower tuples".to_string(),
+            )),
+            Expr::App { .. } => {
+                let mut args = expr.unfold_applications().into_iter();
+                let func = args.next().unwrap();
+                let (lowered_func, mut ls, mut gs) = self.lower_expr(func)?;
 
-    pub fn lambda_lift(
-        &mut self,
-        expr: TypedExpr,
-    ) -> Result<(TypedExpr, Vec<IRLiftedDecl>), CodegenError> {
-        match expr {
-            Expr::Lambda { .. } => {
-                let (binders, body) = expr.collapse_lambdas();
-                let (lifted_body, ds) = self.lambda_lift_inner(body)?;
-                let lam = binders
-                    .into_iter()
-                    .rev()
-                    .fold(lifted_body, |expr, b| Expr::Lambda {
-                        binder: b,
-                        body: Box::new(expr),
-                    });
-                Ok((lam, ds))
-            }
-            _ => self.lambda_lift_inner(expr),
-        }
-    }
-
-    pub fn lambda_lift_inner(
-        &mut self,
-        expr: TypedExpr,
-    ) -> Result<(TypedExpr, Vec<(ValueDeclaration<Var>, Type)>), CodegenError> {
-        match expr {
-            Expr::Var(_) => Ok((expr, vec![])),
-            Expr::Literal(_) => Ok((expr, vec![])),
-            Expr::App { func, arg } => {
-                let (lifted_func, mut d1) = self.lambda_lift_inner(*func)?;
-                let (lifted_arg, d2) = self.lambda_lift_inner(*arg)?;
-                d1.extend(d2);
+                let mut lowered_args = vec![];
+                for arg in args {
+                    let (lowered_arg, arg_ls, arg_gs) = self.lower_expr(arg)?;
+                    ls.extend(arg_ls);
+                    gs.extend(arg_gs);
+                    lowered_args.push(lowered_arg);
+                }
                 Ok((
-                    Expr::App {
-                        func: Box::new(lifted_func),
-                        arg: Box::new(lifted_arg),
+                    IRExpression::App {
+                        func: Box::new(lowered_func),
+                        args: lowered_args,
                     },
-                    d1,
-                ))
-            }
-            Expr::Ann { ty, expr } => {
-                let (lifted_expr, ds) = self.lambda_lift_inner(*expr)?;
-                Ok((
-                    Expr::Ann {
-                        ty,
-                        expr: Box::new(lifted_expr),
-                    },
-                    ds,
-                ))
-            }
-            Expr::Let { binder, expr, body } => {
-                let (lifted_expr, mut d1) = self.lambda_lift_inner(*expr)?;
-                let (lifted_body, d2) = self.lambda_lift_inner(*body)?;
-                d1.extend(d2);
-                Ok((
-                    Expr::Let {
-                        binder,
-                        expr: Box::new(lifted_expr),
-                        body: Box::new(lifted_body),
-                    },
-                    d1,
-                ))
-            }
-            Expr::Lambda { .. } => {
-                let (binders, body) = expr.collapse_lambdas();
-                let binders_len = binders.len();
-                let fresh_name = self.fresh_top_name();
-                let (lifted_body, mut ds) = self.lambda_lift_inner(body)?;
-                let value_decl = ValueDeclaration {
-                    name: fresh_name.clone(),
-                    expr: binders
-                        .into_iter()
-                        .rev()
-                        .fold(lifted_body, |e, b| Expr::Lambda {
-                            binder: b,
-                            body: Box::new(e),
-                        }),
-                };
-
-                // TODO Figure out the actual type here
-                // So far we're just creating a function type with enough arguments
-                // so we generate the right WASM signature
-                let ty = std::iter::repeat(Type::int())
-                    .take(binders_len)
-                    .fold(Type::int(), |acc, ty| Type::fun(ty, acc));
-
-                ds.push((value_decl, ty.clone()));
-                Ok((
-                    Expr::Var(Var {
-                        name: fresh_name,
-                        ty,
-                    }),
-                    ds,
+                    ls,
+                    gs,
                 ))
             }
             Expr::Construction { dtor, args } => {
-                let mut ds = vec![];
-                let mut lifted_args = vec![];
+                let mut lowered_args = vec![];
+                let mut ls = vec![];
+                let mut gs = vec![];
                 for arg in args {
-                    let (lifted_expr, current_ds) = self.lambda_lift_inner(arg)?;
-                    lifted_args.push(lifted_expr);
-                    ds.extend(current_ds);
+                    let (lowered_arg, arg_ls, arg_gs) = self.lower_expr(arg)?;
+                    ls.extend(arg_ls);
+                    gs.extend(arg_gs);
+                    lowered_args.push(lowered_arg);
                 }
+
+                let (tag, arity) = self.find_data_constructor(&dtor)?;
+                assert_eq!(arity, lowered_args.len());
                 Ok((
-                    Expr::Construction {
-                        dtor,
-                        args: lifted_args,
+                    IRExpression::Pack {
+                        tag: tag as u32,
+                        args: lowered_args,
                     },
-                    ds,
+                    ls,
+                    gs,
+                ))
+            }
+            Expr::Lambda { .. } => {
+                let (binders, body) = expr.collapse_lambdas();
+                let fresh_name = self.fresh_top_name();
+                let (lowered_body, locals, mut gs) = self.lower_expr(body)?;
+                let ir_decl = IRDeclaration {
+                    name: fresh_name.clone(),
+                    arguments: binders.into_iter().map(|v| v.name).collect(),
+                    locals,
+                    expr: lowered_body,
+                };
+
+                gs.push(ir_decl);
+                Ok((IRExpression::Var(fresh_name), vec![], gs))
+            }
+            Expr::Let { binder, expr, body } => {
+                let fresh_local = self.fresh_name(&binder.name);
+                let renamed_body = body.subst_var(&binder.name, &fresh_local);
+                let mut locals = vec![fresh_local.clone()];
+                let (lowered_expr, ls, mut gs) = self.lower_expr(*expr)?;
+                let (lowered_body, ls_body, gs_body) = self.lower_expr(renamed_body)?;
+                locals.extend(ls);
+                locals.extend(ls_body);
+                gs.extend(gs_body);
+                Ok((
+                    IRExpression::Let {
+                        binder: fresh_local,
+                        expr: Box::new(lowered_expr),
+                        body: Box::new(lowered_body),
+                    },
+                    locals,
+                    gs,
                 ))
             }
             Expr::Match { expr, cases } => {
-                let (lifted_expr, mut ds) = self.lambda_lift_inner(*expr)?;
-                let mut lifted_cases = vec![];
-                for Case {
-                    data_constructor,
-                    binders,
-                    expr,
-                } in cases
-                    {
-                        let (lifted_case, current_ds) = self.lambda_lift_inner(expr)?;
-                        lifted_cases.push(Case {
-                            data_constructor,
-                            binders,
-                            expr: lifted_case,
-                        });
-                        ds.extend(current_ds)
-                    }
-                Ok((
-                    Expr::Match {
-                        expr: Box::new(lifted_expr),
-                        cases: lifted_cases,
-                    },
-                    ds,
-                ))
+                // TODO Implement case lifting
+                Err(CodegenError::NotImplemented("lower matches".to_string()))
             }
-            Expr::Tuple { .. } => Err(CodegenError::NotImplemented("tuple".to_string())),
         }
     }
 }
@@ -439,6 +416,8 @@ impl Lowering {
 #[derive(Debug)]
 pub enum CodegenError {
     NotImplemented(String),
+    UnknownType(String),
+    UnknownDataConstructor(Dtor),
 }
 
 impl fmt::Display for CodegenError {
@@ -450,6 +429,10 @@ impl fmt::Display for CodegenError {
                 CodegenError::NotImplemented(str) => {
                     format!("Codegen not implemented for: {}", str)
                 }
+                CodegenError::UnknownType(ty) => format!("Couldn't lower unknown type: {}", ty),
+                CodegenError::UnknownDataConstructor(dtor) => {
+                    format!("Couldn't lower unknown dataconstructor: {}", dtor)
+                }
             }
         )
     }
@@ -460,6 +443,7 @@ pub struct Codegen {
     supply: u32,
     /// A mapping from names to their index in the function table as well as their type
     global_names: HashMap<String, (u32, Type)>,
+    global_names_ir: HashMap<String, u32>,
     out: String,
 }
 
@@ -468,6 +452,7 @@ impl Codegen {
         Codegen {
             supply: 0,
             global_names: HashMap::new(),
+            global_names_ir: HashMap::new(),
             out: String::new(),
         }
     }
@@ -487,6 +472,114 @@ impl Codegen {
             }
         }
         self.global_names = global_names;
+    }
+
+    fn populate_global_names_ir(&mut self, ir: &IR) {
+        let mut index_supply: u32 = 0;
+        let mut global_names_ir = HashMap::new();
+        for global in &ir.globals {
+            global_names_ir.insert(global.name.clone(), index_supply);
+            index_supply += 1;
+        }
+        self.global_names_ir = global_names_ir;
+    }
+
+    pub fn codegen_ir(mut self, ir: IR) -> String {
+        self.populate_global_names_ir(&ir);
+
+        self.out += "(module\n";
+        self.function_table_ir();
+        self.rts();
+        for ir_decl in ir.globals {
+            self.gen_ir_decl(ir_decl);
+        }
+        self.entry_point();
+        self.out += "\n)";
+        self.out
+    }
+
+    fn gen_ir_decl(&mut self, decl: IRDeclaration) {
+        // info!("{} : {} =\n{}", name, ty, expr);
+        self.out += &format!("\n(func ${}", decl.name);
+        let arg_count = decl.arguments.len();
+        if arg_count != 0 {
+            self.out += " (param $args i32)"
+        }
+        self.out += " (result i32)\n";
+
+        for binder in decl.arguments.iter() {
+            self.out += &format!("(local ${} i32)\n", binder)
+        }
+        for local in decl.locals {
+            self.out += &format!("(local ${} i32)\n", local)
+        }
+        for (ix, binder) in decl.arguments.iter().enumerate() {
+            self.out += &format!(
+                "(set_local ${} (i32.load (i32.add (get_local $args) (i32.const {}))))\n",
+                binder,
+                ix * 4
+            )
+        }
+
+        self.gen_ir_expr(decl.expr);
+        self.out += ")\n";
+
+        if arg_count == 0 {
+            self.out += &format!("(func ${}_c (result i32) (call ${}))", decl.name, decl.name)
+        } else {
+            // generate the wrapper
+            self.out += &format!(
+                "(func ${}_c (result i32) (call $make_closure (i32.const {}) (i32.const {})))",
+                decl.name,
+                arg_count,
+                self.global_names_ir.get(&decl.name).unwrap()
+            )
+        }
+    }
+
+    fn gen_ir_expr(&mut self, expr: IRExpression) {
+        match expr {
+            IRExpression::Literal(Literal::Int(i)) => {
+                self.out += &format!("(i32.const {})", i);
+            }
+            IRExpression::Literal(Literal::Bool(b)) => {
+                self.out += &format!("(i32.const {})", if b { 1 } else { 0 });
+            }
+            IRExpression::Pack { tag, args } => {
+                self.out += &format!("(i32.const {})\n", tag);
+                let args_len = args.len();
+                for arg in args {
+                    self.gen_ir_expr(arg);
+                    self.out += "\n";
+                }
+                self.out += &format!("(call $construct_pack_{})", args_len);
+            }
+            IRExpression::Let { binder, expr, body } => {
+                self.gen_ir_expr(*expr);
+                self.out += &format!("(local.set ${})", binder);
+                self.gen_ir_expr(*body)
+            }
+            IRExpression::Var(v) => {
+                if &v == "primadd" {
+                    self.out += "(i32.add (local.get $x) (local.get $y))"
+                } else if self.global_names_ir.contains_key(&v) {
+                    self.out += &format!("(call ${}_c)", v)
+                } else {
+                    self.out += &format!("(local.get ${})", v)
+                }
+            }
+            IRExpression::App { func, args } => {
+                self.gen_ir_expr(*func);
+                for arg in args {
+                    self.out += "(call $apply ";
+                    self.gen_ir_expr(arg);
+                    self.out += ")";
+                }
+            }
+            IRExpression::Match {..} => {
+                panic!("No match yet")
+            }
+        }
     }
 
     pub fn codegen(mut self, prog: &[(Declaration<Var>, Type)]) -> Result<String, CodegenError> {
@@ -694,6 +787,13 @@ impl Codegen {
         }
     }
 
+    fn function_table_ir(&mut self) {
+        self.out += &format!("(table {} anyfunc)", self.global_names_ir.len());
+        for (name, n) in self.global_names_ir.iter() {
+            self.out += &format!("(elem (i32.const {}) ${})", n, name)
+        }
+    }
+
     fn gen_expr(&mut self, expr: Expr<Var>) -> Result<(), CodegenError> {
         match expr {
             Expr::Ann { expr, .. } => self.gen_expr(*expr),
@@ -887,7 +987,7 @@ const CLOSURE_RTS: &str = r#"
        ;; Writing the values
        (i32.store (i32.add (local.get $pack_start) (i32.const 8)) (local.get $val1))
        (i32.store (i32.add (local.get $pack_start) (i32.const 12)) (local.get $val2))
-       (i32.store (i32.add (local.get $pack_start) (i32.const 16)) (local.get $val4))
+       (i32.store (i32.add (local.get $pack_start) (i32.const 16)) (local.get $val3))
        (local.get $pack_start))
 
  (func $get_pack_tag (param $pack_start i32) (result i32)

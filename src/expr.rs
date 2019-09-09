@@ -457,6 +457,17 @@ impl<B> Expr<B> {
         }
     }
 
+    pub fn unfold_applications(self) -> Vec<Self> {
+        match self {
+            Expr::App { func, arg } => {
+                let mut res = func.unfold_applications();
+                res.push(*arg);
+                res
+            }
+            _ => vec![self],
+        }
+    }
+
     pub fn free_vars(&self) -> HashSet<String>
     where
         B: HasIdent,

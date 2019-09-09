@@ -7,8 +7,6 @@ type Either {
 }
 
 let main : Int =
-  let x = Either::Right(0) in
-  match x {
-    Either::Left(x) => add x 5,
-    Either::Right(x) => add x 10,
-  };
+  let x = 10 in
+  let x = 5 in
+  (\x. \y. add x y) 1 x;
