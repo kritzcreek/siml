@@ -630,12 +630,12 @@ impl TypeChecker {
         let dtors = self
             .types
             .get(&dtor.ty)
-            .ok_or(TypeError::UnknownType(dtor.ty.to_string()))?;
+            .ok_or_else(|| TypeError::UnknownType(dtor.ty.to_string()))?;
         dtors
             .iter()
             .find(|d| d.name == dtor.name)
             .cloned()
-            .ok_or(TypeError::UnknownDataConstructor(dtor.clone()))
+            .ok_or_else(|| TypeError::UnknownDataConstructor(dtor.clone()))
     }
 
     /// Instantiates all bound type variables for a Polytype with fresh vars,

@@ -1,5 +1,5 @@
 use crate::bi_types::{TypeChecker, TypeError};
-use crate::codegen::{Codegen, CodegenError, IRLowering};
+use crate::codegen::{Codegen, CodegenError, Lowering};
 use crate::grammar;
 use crate::term::{EvalError, Term};
 use crate::token;
@@ -36,10 +36,10 @@ pub fn run_program(input: &str, backend: Backend) -> Result<String, PipelineErro
             Ok(format!("{}", res))
         }
         Backend::Wasm => {
-            let lowered = IRLowering::new()
+            let lowered = Lowering::new()
                 .lower(tys)
                 .map_err(PipelineError::CodegenError)?;
-            let prog = Codegen::new().codegen_ir(lowered);
+            let prog = Codegen::new().codegen(lowered);
             println!("{}", prog);
             let res =
                 wasm::run_wasm(prog).map_err(|err| PipelineError::WasmError(format!("{}", err)))?;
