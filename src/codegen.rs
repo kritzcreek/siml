@@ -39,9 +39,17 @@ pub enum IRExpression {
         args: Vec<IRExpression>,
     },
     Match {
+        expr_local: String,
         expr: Box<IRExpression>,
         cases: Vec<IRCase>,
     },
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct IRCase {
+    tag: u32,
+    binders: Vec<String>,
+    expr: IRExpression,
 }
 
 #[derive(Debug, Default)]
@@ -211,18 +219,49 @@ impl IRLowering {
                 ))
             }
             Expr::Match { expr, cases } => {
-                // TODO Implement case lifting
-                Err(CodegenError::NotImplemented("lower matches".to_string()))
+                let expr_local = self.fresh_name("match");
+                let (lowered_expr, mut ls, mut gs) = self.lower_expr(*expr)?;
+                ls.push(expr_local.clone());
+                let max_binders = cases
+                    .iter()
+                    .fold(0, |acc, case| usize::max(acc, case.binders.len()));
+                let mut fresh_binders = Vec::with_capacity(max_binders);
+                for _ in 1..=max_binders {
+                    fresh_binders.push(self.fresh_name("case"))
+                }
+                ls.extend(fresh_binders.clone());
+
+                let mut lowered_cases = vec![];
+                for Case {
+                    data_constructor,
+                    binders,
+                    expr,
+                } in cases
+                {
+                    let case_binders: Vec<(&str, &str)> = binders
+                        .iter()
+                        .zip(fresh_binders.iter())
+                        .map(|(v, fresh)| (v.name.as_str(), fresh.as_str()))
+                        .collect();
+                    let renamed_expr = expr.subst_var_many(case_binders.clone());
+                    let (tag, arity) = self.find_data_constructor(&data_constructor)?;
+                    assert_eq!(arity, case_binders.len());
+                    let (lowered_expr, ls_case, gs_case) = self.lower_expr(renamed_expr)?;
+                    ls.extend(ls_case);
+                    gs.extend(gs_case);
+                    lowered_cases.push(IRCase {
+                        tag: tag as u32,
+                        binders: case_binders
+                            .into_iter()
+                            .map(|(_, new)| new.to_string())
+                            .collect(),
+                        expr: lowered_expr,
+                    });
+                }
+                Ok((IRExpression::Match { expr_local, expr: Box::new(lowered_expr), cases: lowered_cases}, ls, gs))
             }
         }
     }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct IRCase {
-    pub tag: u32,
-    pub binders: Vec<String>,
-    pub expr: IRExpression,
 }
 
 #[derive(Debug, Default)]
@@ -576,9 +615,25 @@ impl Codegen {
                     self.out += ")";
                 }
             }
-            IRExpression::Match {..} => {
-                panic!("No match yet")
-            }
+            IRExpression::Match { expr_local, expr, cases } => {
+                self.gen_ir_expr(*expr);
+                self.out += &format!("(local.set ${})\n", expr_local);
+                let cases_len = cases.len();
+                for case in cases {
+                    self.out += &format!("(if (result i32) (i32.eq (call $get_pack_tag (local.get ${})) (i32.const {}))", expr_local, case.tag);
+                    self.out += "\n(then\n";
+                    for (ix, binder) in case.binders.into_iter().enumerate() {
+                        self.out += &format!("(local.set ${} (call $get_pack_field (local.get ${}) (i32.const {})))\n", binder, expr_local, ix);
+                    }
+                    self.gen_ir_expr(case.expr);
+                    self.out += ")\n(else ";
+                }
+                self.out += "(unreachable)";
+                for _ in 1..=cases_len {
+                    self.out += "))"; // closes open (else 's and (if 's
+                }
+
+            },
         }
     }
 
