@@ -21,6 +21,8 @@ extern {
         ")" => Token::RParen,
         "{" => Token::LBrace,
         "}" => Token::RBrace,
+        "<" => Token::LAngle,
+        ">" => Token::RAngle,
         "." => Token::Dot,
         "->" => Token::Arrow,
         "=>" => Token::FatArrow,
@@ -42,8 +44,8 @@ pub Declaration: Declaration<String> = {
        { expr: Expr::Ann { expr: Box::new(expr), ty },
          name: name.to_string()
        }),
- "type" <name: "upper_identifier"> "{" <constructors: CommaSep<DataConstructor>> "}" =>
-   Declaration::Type(TypeDeclaration { name: name.to_string(), constructors })
+ "type" <name: "upper_identifier"> <arguments: TypeArgs<"identifier">?> "{" <constructors: CommaSep<DataConstructor>> "}" =>
+   Declaration::Type(TypeDeclaration { name: name.to_string(), arguments: arguments.unwrap_or(vec![]),constructors })
 }
 
 DataConstructor: DataConstructor = {
@@ -101,6 +103,10 @@ TypeAtom: Type = {
     "(" <fst:Type> "," <snd:Type> ")" => Type::Tuple(Box::new(fst), Box::new(snd)),
     <i:"identifier"> => Type::Var(i),
     <i:"upper_identifier"> => Type::Constructor(i),
+}
+
+TypeArgs<T>: Vec<T> = {
+    "<" <args: CommaSep<T>> ">" => args
 }
 
 // Also allows trailing commas

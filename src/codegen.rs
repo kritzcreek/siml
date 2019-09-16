@@ -80,7 +80,7 @@ impl Lowering {
         let dtors = self
             .types
             .get(&dtor.ty)
-            .ok_or_else(||CodegenError::UnknownType(dtor.ty.to_string()))?;
+            .ok_or_else(|| CodegenError::UnknownType(dtor.ty.to_string()))?;
         dtors
             .iter()
             .enumerate()
@@ -91,7 +91,7 @@ impl Lowering {
                     None
                 }
             })
-            .ok_or_else(||CodegenError::UnknownDataConstructor(dtor.clone()))
+            .ok_or_else(|| CodegenError::UnknownDataConstructor(dtor.clone()))
     }
 
     pub fn lower(&mut self, prog: Vec<(Declaration<Var>, Type)>) -> Result<IR, CodegenError> {

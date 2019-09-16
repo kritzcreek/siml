@@ -19,6 +19,7 @@ pub struct ValueDeclaration<B> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TypeDeclaration {
     pub name: String,
+    pub arguments: Vec<String>,
     pub constructors: Vec<DataConstructor>,
 }
 

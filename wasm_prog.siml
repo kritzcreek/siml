@@ -6,9 +6,15 @@ type Either {
   Right(Int),
 }
 
+type Maybe<a> {
+  Just(a),
+  Nothing()
+}
+
 let main : Int =
   let x = Either::Right(1) in
   match x {
     Either::Right(r) => add r 2,
     Either::Left(l) => 42,
+    Maybe::Just(x) => x,
   };

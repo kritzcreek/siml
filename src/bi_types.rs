@@ -11,7 +11,7 @@ use std::fmt;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Type {
-    Constructor(String),
+    Constructor { name: String, arguments: Vec<Type> },
     Var(String),
     Existential(String),
     Poly { vars: Vec<String>, ty: Box<Type> },
@@ -28,7 +28,7 @@ impl fmt::Display for Type {
 impl Type {
     pub fn is_mono(&self) -> bool {
         match self {
-            Type::Var(_) | Type::Existential(_) | Type::Constructor(_) => true,
+            Type::Var(_) | Type::Existential(_) | Type::Constructor { .. } => true,
             Type::Poly { .. } => false,
             Type::Fun { arg, result } => arg.is_mono() && result.is_mono(),
             Type::Tuple(fst, snd) => fst.is_mono() && snd.is_mono(),
@@ -55,7 +55,11 @@ impl Type {
                 });
                 res.extend(free_in_ty);
             }
-            Type::Constructor(_) => {}
+            Type::Constructor { arguments, .. } => {
+                for arg in arguments {
+                    res.extend(arg.free_vars())
+                }
+            }
             Type::Tuple(fst, snd) => {
                 res.extend(fst.free_vars());
                 res.extend(snd.free_vars());
@@ -83,7 +87,13 @@ impl Type {
 
     pub fn subst(&self, var: &str, replacement: &Type) -> Type {
         match self {
-            Type::Constructor(_) => self.clone(),
+            Type::Constructor { name, arguments } => Type::Constructor {
+                name: name.clone(),
+                arguments: arguments
+                    .iter()
+                    .map(|arg| arg.subst(var, replacement))
+                    .collect(),
+            },
             Type::Var(v) | Type::Existential(v) => {
                 if v == var {
                     replacement.clone()
@@ -113,7 +123,11 @@ impl Type {
     }
     pub fn subst_mut(&mut self, var: &str, replacement: &Type) {
         match self {
-            Type::Constructor(_) => {}
+            Type::Constructor { arguments, .. } => {
+                for arg in arguments {
+                    arg.subst_mut(var, replacement)
+                }
+            }
             Type::Var(v) | Type::Existential(v) => {
                 if v == var {
                     *self = replacement.clone();
@@ -139,10 +153,16 @@ impl Type {
 // Smart constructors
 impl Type {
     pub fn int() -> Self {
-        Type::Constructor("Int".to_string())
+        Type::Constructor {
+            name: "Int".to_string(),
+            arguments: vec![],
+        }
     }
     pub fn bool() -> Self {
-        Type::Constructor("Bool".to_string())
+        Type::Constructor {
+            name: "Bool".to_string(),
+            arguments: vec![],
+        }
     }
 
     fn var(str: &str) -> Self {
@@ -179,7 +199,21 @@ impl Type {
     }
     fn to_doc_inner(&self, depth: u32) -> Doc<BoxDoc<()>> {
         match self {
-            Type::Constructor(c) => Doc::text(c),
+            Type::Constructor { name, arguments } => {
+                if arguments.is_empty() {
+                    Doc::text(name)
+                } else {
+                    Doc::text(name)
+                        .append(Doc::text("<"))
+                        .append(Doc::intersperse(
+                            arguments.iter().map(|arg| arg.to_doc()),
+                            Doc::text(",").append(Doc::space()),
+                        ))
+                        .append(Doc::text(">"))
+                        .group()
+                }
+            }
+
             Type::Existential(evar) => Doc::text(evar),
             Type::Var(v) => Doc::text(v),
             Type::Poly { vars, ty } => {
@@ -428,7 +462,7 @@ impl Context {
 
     fn wf_type(&self, ty: &Type) -> bool {
         match ty {
-            Type::Constructor(_) => true,
+            Type::Constructor { arguments, .. } => arguments.iter().all(|arg| self.wf_type(arg)),
             Type::Poly { vars, ty } => self.forall_wf(vars, ty),
             Type::Fun { arg, result } => self.wf_type(arg) && self.wf_type(result),
             Type::Var(var) => self.u_var_wf(var),
@@ -466,7 +500,10 @@ impl Context {
 
     fn apply(&self, ty: &Type) -> Type {
         match ty {
-            Type::Constructor(_) => ty.clone(),
+            Type::Constructor { name, arguments } => Type::Constructor {
+                name: name.clone(),
+                arguments: arguments.iter().map(|arg| self.apply(arg)).collect(),
+            },
             Type::Var(v) => Type::Var(v.clone()),
             Type::Existential(ex) => self
                 .find_solved(&ex)
@@ -487,7 +524,10 @@ impl Context {
 
     fn apply_(&self, ty: Type) -> Type {
         match ty {
-            Type::Constructor(_) => ty,
+            Type::Constructor { name, arguments } => Type::Constructor {
+                name,
+                arguments: arguments.into_iter().map(|arg| self.apply_(arg)).collect(),
+            },
             Type::Var(_) => ty,
             Type::Existential(ref ex) => {
                 self.find_solved(ex).map_or_else(|| ty, |ty| self.apply(ty))

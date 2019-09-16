@@ -10,6 +10,8 @@ pub enum Token {
     RParen,
     LBrace,
     RBrace,
+    LAngle,
+    RAngle,
     Colon,
     DoubleColon,
     Semi,
@@ -88,6 +90,8 @@ impl<'input> Iterator for Lexer<'input> {
             Some('(') => Some(Token::LParen),
             Some(')') => Some(Token::RParen),
             Some('{') => Some(Token::LBrace),
+            Some('<') => Some(Token::LAngle),
+            Some('>') => Some(Token::RAngle),
             Some('}') => Some(Token::RBrace),
             Some(':') => {
                 if self.peek() == Some(':') {
