@@ -1,9 +1,9 @@
 let add : Int -> Int -> Int =
   \x. \y. primadd;
 
-type Either {
-  Left(Int),
-  Right(Int),
+type Either<a, b> {
+  Left(a),
+  Right(b),
 }
 
 type Maybe<a> {
@@ -11,10 +11,15 @@ type Maybe<a> {
   Nothing()
 }
 
+let hush: forall a b. Either<a, b> -> Maybe<b> =
+  \x. match x {
+    Either::Left(l) => Maybe::Nothing(),
+    Either::Right(r) => Maybe::Just(r),
+  };
+
 let main : Int =
-  let x = Either::Right(1) in
-  match x {
-    Either::Right(r) => add r 2,
-    Either::Left(l) => 42,
+  let x = Either::Left(12) in
+  match hush x {
     Maybe::Just(x) => x,
+    Maybe::Nothing() => 10,
   };

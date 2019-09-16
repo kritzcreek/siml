@@ -519,6 +519,14 @@ const CLOSURE_RTS: &str = r#"
           (i32.store (i32.add (get_local $closure) (i32.const 4)) (i32.add (get_local $applied) (i32.const 1)))
           (get_local $closure))))
 
+ (func $construct_pack_0 (param $tag i32) (result i32)
+       (local $pack_start i32)
+       (set_local $pack_start (call $allocate (i32.const 8)))
+       (i32.store (local.get $pack_start) (local.get $tag))
+       ;; Writing the arity
+       (i32.store (i32.add (local.get $pack_start) (i32.const 4)) (i32.const 0))
+       (local.get $pack_start))
+
  (func $construct_pack_1 (param $tag i32) (param $val1 i32) (result i32)
        (local $pack_start i32)
        (set_local $pack_start (call $allocate (i32.const 12)))

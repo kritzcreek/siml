@@ -121,6 +121,14 @@ impl Type {
             ),
         }
     }
+
+    pub fn subst_many(mut self, subst: &[(String, Type)]) -> Type {
+        for (v, t) in subst {
+            self.subst_mut(v, t);
+        }
+        self
+    }
+
     pub fn subst_mut(&mut self, var: &str, replacement: &Type) {
         match self {
             Type::Constructor { arguments, .. } => {
@@ -634,9 +642,15 @@ impl TypeError {
 }
 
 #[derive(Debug, PartialEq, Eq, Default)]
+pub struct TypeInfo {
+    type_arguments: Vec<String>,
+    constructors: Vec<DataConstructor>,
+}
+
+#[derive(Debug, PartialEq, Eq, Default)]
 pub struct TypeChecker {
     name_gen: NameGen,
-    types: HashMap<String, Vec<DataConstructor>>,
+    types: HashMap<String, TypeInfo>,
 }
 
 #[derive(Debug, PartialEq, Eq, Default)]
@@ -663,19 +677,30 @@ impl TypeChecker {
     }
 
     fn add_type_declaration(&mut self, ty_decl: TypeDeclaration) {
-        self.types.insert(ty_decl.name, ty_decl.constructors);
+        self.types.insert(
+            ty_decl.name,
+            TypeInfo {
+                type_arguments: ty_decl.arguments,
+                constructors: ty_decl.constructors,
+            },
+        );
     }
 
-    fn find_data_constructor(&self, dtor: &Dtor) -> Result<DataConstructor, TypeError> {
-        let dtors = self
+    fn find_data_constructor(
+        &self,
+        dtor: &Dtor,
+    ) -> Result<(DataConstructor, Vec<String>), TypeError> {
+        let type_info = self
             .types
             .get(&dtor.ty)
             .ok_or_else(|| TypeError::UnknownType(dtor.ty.to_string()))?;
-        dtors
+        let constructor = type_info
+            .constructors
             .iter()
             .find(|d| d.name == dtor.name)
             .cloned()
-            .ok_or_else(|| TypeError::UnknownDataConstructor(dtor.clone()))
+            .ok_or_else(|| TypeError::UnknownDataConstructor(dtor.clone()))?;
+        Ok((constructor, type_info.type_arguments.clone()))
     }
 
     /// Instantiates all bound type variables for a Polytype with fresh vars,
@@ -712,6 +737,27 @@ impl TypeChecker {
         debug!("[unify] \n{} ({}) ({})", ctx, ty1, ty2);
         match (ty1, ty2) {
             (ty1, ty2) if ty1 == ty2 => Ok(ctx),
+            (
+                Type::Constructor {
+                    name: name1,
+                    arguments: args1,
+                },
+                Type::Constructor {
+                    name: name2,
+                    arguments: args2,
+                },
+            ) if name1 == name2 => {
+                if args1.len() != args2.len() {
+                    return Err(TypeError::Unification(ty1.clone(), ty2.clone()));
+                }
+                let mut ctx = ctx;
+                for (arg1, arg2) in args1.iter().zip(args2) {
+                    let arg1 = ctx.apply(arg1);
+                    let arg2 = ctx.apply(arg2);
+                    ctx = self.unify(ctx, &arg1, &arg2)?;
+                }
+                Ok(ctx)
+            }
             (
                 Type::Fun {
                     arg: arg1,
@@ -750,7 +796,27 @@ impl TypeChecker {
         assert!(ctx.wf_type(ty2));
 
         match (ty1, ty2) {
-            (Type::Constructor(con1), Type::Constructor(con2)) if con1 == con2 => Ok(ctx),
+            (
+                Type::Constructor {
+                    name: name1,
+                    arguments: args1,
+                },
+                Type::Constructor {
+                    name: name2,
+                    arguments: args2,
+                },
+            ) if name1 == name2 => {
+                if args1.len() != args2.len() {
+                    Err(TypeError::Unification(ty1.clone(), ty2.clone()))
+                } else {
+                    let mut ctx = ctx;
+                    // For now all type constructors are invariant in their arguments (except for functions)
+                    for (arg1, arg2) in args1.iter().zip(args2) {
+                        ctx = self.unify(ctx, arg1, arg2)?;
+                    }
+                    Ok(ctx)
+                }
+            }
             (Type::Var(v1), Type::Var(v2)) if v1 == v2 => Ok(ctx),
             (Type::Existential(e1), Type::Existential(e2)) if e1 == e2 => Ok(ctx),
             (
@@ -938,12 +1004,25 @@ impl TypeChecker {
         ctx: Context,
         case: &Case<String>,
         ty_match: &Type,
-        ty_case: &Type,
+        ty_body: &Type,
     ) -> Result<(Context, Case<Var>), TypeError> {
-        let data_constructor = self.find_data_constructor(&case.data_constructor)?;
+        let (data_constructor, ty_args) = self.find_data_constructor(&case.data_constructor)?;
+
+        let mut ctx = ctx;
+        let fresh_vars: Vec<(String, Type)> = ty_args
+            .into_iter()
+            .map(|arg| {
+                let fresh = self.name_gen.fresh_ty_var();
+                ctx.push(ContextElem::ExVar(fresh.clone()));
+                (arg, Type::Existential(fresh))
+            })
+            .collect();
 
         // Make sure the type of the case constructor matches the type of the matched expression
-        let ty_dtor: Type = Type::Constructor(case.data_constructor.ty.clone());
+        let ty_dtor: Type = Type::Constructor {
+            name: case.data_constructor.ty.clone(),
+            arguments: fresh_vars.iter().map(|(_, ty)| ty.clone()).collect(),
+        };
         let ctx = self.unify(ctx, &ty_dtor, ty_match)?;
 
         let binders: Vec<(String, Type)> = case
@@ -951,17 +1030,19 @@ impl TypeChecker {
             .clone()
             .into_iter()
             .zip(data_constructor.fields)
+            .map(|(binder, ty)| (binder, ctx.apply_(ty.subst_many(&fresh_vars))))
             .collect();
 
-        let (ctx, typed_case, typed_binders) =
-            self.check_renamed_many(ctx, binders, &case.expr, ty_case)?;
+        let (ctx, typed_body, typed_binders) =
+            self.check_renamed_many(ctx, binders, &case.expr, ty_body)?;
+        let applied_body = ctx.apply_expr(typed_body);
 
         Ok((
             ctx,
             Case {
                 data_constructor: case.data_constructor.clone(),
                 binders: typed_binders,
-                expr: typed_case,
+                expr: applied_body,
             },
         ))
     }
@@ -1240,7 +1321,8 @@ impl TypeChecker {
                 ))
             }
             Expr::Construction { dtor, args } => {
-                let DataConstructor { fields, .. } = self.find_data_constructor(&dtor)?;
+                let (DataConstructor { fields, .. }, ty_args) =
+                    self.find_data_constructor(&dtor)?;
                 if args.len() != fields.len() {
                     return Err(TypeError::WrongConstructorArity(
                         dtor.clone(),
@@ -1248,17 +1330,35 @@ impl TypeChecker {
                         args.len(),
                     ));
                 }
-                let mut typed_fields = vec![];
+
                 let mut ctx = ctx;
+                let fresh_vars: Vec<(String, Type)> = ty_args
+                    .into_iter()
+                    .map(|arg| {
+                        let fresh = self.name_gen.fresh_ty_var();
+                        ctx.push(ContextElem::ExVar(fresh.clone()));
+                        (arg, Type::Existential(fresh))
+                    })
+                    .collect();
+
+                let mut typed_fields = vec![];
                 for (arg, ty) in args.iter().zip(fields.clone()) {
-                    let (new_ctx, typed_field) = self.check(ctx, &arg, &ty)?;
+                    let (new_ctx, typed_field) =
+                        self.check(ctx, &arg, &ty.subst_many(&fresh_vars))?;
                     ctx = new_ctx;
                     typed_fields.push(typed_field);
                 }
 
+                let type_arguments = fresh_vars
+                    .into_iter()
+                    .map(|(_, ty)| ctx.apply_(ty))
+                    .collect();
                 Ok((
                     ctx,
-                    Type::Constructor(dtor.ty.to_string()),
+                    Type::Constructor {
+                        name: dtor.ty.to_string(),
+                        arguments: type_arguments,
+                    },
                     Expr::Construction {
                         dtor: dtor.clone(),
                         args: typed_fields,
