@@ -314,7 +314,20 @@ impl Term {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
-            Term::Case { expr, cases } => format!("match {} {{}}", expr),
+            Term::Case { expr, cases } => format!(
+                "match {} {{ {} }}",
+                expr,
+                cases
+                    .iter()
+                    .map(|case| format!(
+                        "<{}>({}) => {}",
+                        case.tag,
+                        case.binders.join(", "),
+                        case.expr.print()
+                    ))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
         }
     }
 }
