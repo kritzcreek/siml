@@ -3,6 +3,7 @@ extern crate log;
 extern crate rustyline;
 
 pub mod bi_types;
+pub mod types;
 pub mod codegen;
 pub mod expr;
 pub mod grammar;

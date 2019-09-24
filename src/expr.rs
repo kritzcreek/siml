@@ -1,5 +1,6 @@
 use crate::bi_types::Type;
 use crate::pretty::render_doc_width;
+use crate::types;
 use pretty::{BoxDoc, Doc};
 use std::collections::HashSet;
 use std::fmt;
@@ -99,6 +100,22 @@ impl HasIdent for Var {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub struct NewVar {
+    pub name: String,
+    pub ty: types::Type,
+}
+
+impl HasIdent for NewVar {
+    fn ident(&self) -> String {
+        self.name.clone()
+    }
+
+    fn ident_with_ty(&self) -> String {
+        format!("{} : {}", self.name, self.ty)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Case<B> {
     pub data_constructor: Dtor,
     pub binders: Vec<B>,
@@ -166,6 +183,14 @@ impl Case<Var> {
         }
     }
 }
+
+impl Case<NewVar> {
+    pub fn subst_var_mut(&mut self, var: &str, replacement: &str) {
+        if !self.binders.iter().any(|binder| var == binder.name) {
+            self.expr.subst_var_mut(var, replacement)
+        }
+    }
+}
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Dtor {
     pub ty: String,
@@ -215,6 +240,7 @@ pub enum Expr<B> {
 
 pub type ParserExpr = Expr<String>;
 pub type TypedExpr = Expr<Var>;
+pub type NewTypedExpr = Expr<NewVar>;
 
 impl<B: HasIdent> fmt::Display for Expr<B> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -512,6 +538,13 @@ impl<B> Expr<B> {
         }
     }
 
+    pub fn app(fun: Expr<B>, arg: Expr<B>) -> Self {
+        Expr::App {
+            func: Box::new(fun),
+            arg: Box::new(arg),
+        }
+    }
+
     pub fn int(i: i32) -> Self {
         Expr::Literal(Literal::Int(i))
     }
@@ -543,6 +576,67 @@ impl TypedExpr {
             Expr::Var(v) => {
                 if var == v.name {
                     *self = Expr::Var(Var {
+                        name: replacement.to_string(),
+                        ty: v.ty.clone(),
+                    })
+                }
+            }
+            Expr::Ann { expr, .. } => {
+                expr.subst_var_mut(var, replacement);
+            }
+            Expr::Lambda { binder, body } => {
+                if var != binder.name {
+                    body.subst_var_mut(var, replacement);
+                }
+            }
+            Expr::Let { binder, expr, body } => {
+                expr.subst_var_mut(var, replacement);
+                if var != binder.name {
+                    body.subst_var_mut(var, replacement);
+                }
+            }
+            Expr::App { func, arg } => {
+                func.subst_var_mut(&var, replacement);
+                arg.subst_var_mut(var, replacement);
+            }
+            Expr::Tuple(fst, snd) => {
+                fst.subst_var_mut(&var, replacement);
+                snd.subst_var_mut(var, replacement);
+            }
+            Expr::Construction { args, .. } => {
+                for arg in args {
+                    arg.subst_var_mut(var, replacement);
+                }
+            }
+            Expr::Match { expr, cases } => {
+                expr.subst_var_mut(&var, replacement);
+                for case in cases {
+                    case.subst_var_mut(var, replacement);
+                }
+            }
+            Expr::Literal(_) => {}
+        }
+    }
+}
+
+impl NewTypedExpr {
+    pub fn subst_var_many(mut self, mappings: Vec<(&str, &str)>) -> NewTypedExpr {
+        for (var, replacement) in mappings {
+            self.subst_var_mut(var, replacement);
+        }
+        self
+    }
+
+    pub fn subst_var(mut self, var: &str, replacement: &str) -> NewTypedExpr {
+        self.subst_var_mut(var, replacement);
+        self
+    }
+
+    pub fn subst_var_mut(&mut self, var: &str, replacement: &str) {
+        match self {
+            Expr::Var(v) => {
+                if var == v.name {
+                    *self = Expr::Var(NewVar {
                         name: replacement.to_string(),
                         ty: v.ty.clone(),
                     })
