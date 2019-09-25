@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
+use crate::bi_types;
 use crate::expr::{
     Case, DataConstructor, Declaration, Dtor, Expr, HasIdent, Literal, NewTypedExpr, NewVar,
-    ParserExpr, TypeDeclaration, ValueDeclaration,
+    TypeDeclaration, ValueDeclaration,
 };
 use crate::pretty::render_doc;
 use pretty::{BoxDoc, Doc};
@@ -25,6 +26,28 @@ impl fmt::Display for Type {
 }
 
 impl Type {
+    pub fn from_bi_type(ty: bi_types::Type) -> Type {
+        match ty {
+            bi_types::Type::Constructor { name, arguments } => Type::Constructor {
+                name,
+                arguments: arguments
+                    .into_iter()
+                    .map(|t| Type::from_bi_type(t))
+                    .collect(),
+            },
+            bi_types::Type::Var(v) => Type::Var(v),
+            bi_types::Type::Existential(_) => Type::Unknown(404),
+            bi_types::Type::Poly { vars, ty } => Type::Poly {
+                vars,
+                ty: Box::new(Type::from_bi_type(*ty)),
+            },
+            bi_types::Type::Fun { arg, result } => {
+                Type::fun(Type::from_bi_type(*arg), Type::from_bi_type(*result))
+            }
+            bi_types::Type::Tuple(_, _) => panic!("no tuples for you"),
+        }
+    }
+
     pub fn int() -> Self {
         Type::Constructor {
             name: "Int".to_string(),
@@ -113,32 +136,32 @@ impl Type {
         }
     }
 
-    pub fn subst_mut(&mut self, unknown: u32, replacement: &Type) {
+    pub fn subst_mut(&mut self, var: &str, replacement: &Type) {
         match self {
             Type::Constructor { arguments, .. } => {
                 for arg in arguments {
-                    arg.subst_mut(unknown, replacement)
+                    arg.subst_mut(var, replacement)
                 }
             }
-            Type::Var(_) => {}
-            Type::Unknown(u) => {
-                if *u == unknown {
+            Type::Var(v) => {
+                if v == var {
                     *self = replacement.clone();
                 }
             }
+            Type::Unknown(_) => {}
             Type::Poly { ty, .. } => {
-                ty.subst_mut(unknown, replacement);
+                ty.subst_mut(var, replacement);
             }
             Type::Fun { arg, result } => {
-                arg.subst_mut(unknown, replacement);
-                result.subst_mut(unknown, replacement);
+                arg.subst_mut(var, replacement);
+                result.subst_mut(var, replacement);
             }
         }
     }
 
-    pub fn subst_many(mut self, subst: &[(u32, Type)]) -> Type {
+    pub fn subst_many(mut self, subst: &[(String, Type)]) -> Type {
         for (v, t) in subst {
-            self.subst_mut(*v, t);
+            self.subst_mut(&*v, t);
         }
         self
     }
@@ -250,10 +273,16 @@ struct TypedValue {
     ty: Type,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct TypeInfo {
+    type_arguments: Vec<String>,
+    constructors: Vec<DataConstructor>,
+}
+
 #[derive(Debug, PartialEq, Default)]
 pub struct CheckState {
     unknown_supply: u32,
-    types: HashMap<String, Vec<DataConstructor>>,
+    types: HashMap<String, TypeInfo>,
     subst: HashMap<u32, Type>,
     context: HashMap<String, Type>,
 }
@@ -264,8 +293,18 @@ pub struct TypeChecker {
 }
 
 impl TypeChecker {
-    fn new() -> TypeChecker {
+    pub fn new() -> TypeChecker {
         Default::default()
+    }
+
+    fn add_type_declaration(&mut self, ty_decl: TypeDeclaration) {
+        self.state.types.insert(
+            ty_decl.name,
+            TypeInfo {
+                type_arguments: ty_decl.arguments,
+                constructors: ty_decl.constructors,
+            },
+        );
     }
 
     fn fresh_unknown(&mut self) -> Type {
@@ -304,6 +343,24 @@ impl TypeChecker {
             Some(ty) => Ok(ty.clone()),
             None => Err(TypeError::UnknownVar(name.to_string())),
         }
+    }
+
+    fn lookup_dataconstructor(
+        &self,
+        dtor: &Dtor,
+    ) -> Result<(DataConstructor, Vec<String>), TypeError> {
+        let type_info = self
+            .state
+            .types
+            .get(&dtor.ty)
+            .ok_or_else(|| TypeError::UnknownType(dtor.ty.to_string()))?;
+        let constructor = type_info
+            .constructors
+            .iter()
+            .find(|d| d.name == dtor.name)
+            .cloned()
+            .ok_or_else(|| TypeError::UnknownDataConstructor(dtor.clone()))?;
+        Ok((constructor, type_info.type_arguments.clone()))
     }
 
     fn bind_name<F, A>(&mut self, name: String, ty: Type, action: F) -> A
@@ -397,8 +454,39 @@ impl TypeChecker {
         Ok(())
     }
 
+    fn instantiate(&mut self, ty: Type) -> Type {
+        match ty {
+            Type::Poly { vars, ty } => {
+                let fresh_vars: Vec<(String, Type)> = vars
+                    .into_iter()
+                    .map(|v| (v, self.fresh_unknown()))
+                    .collect();
+                ty.subst_many(&fresh_vars)
+            }
+            ty => ty,
+        }
+    }
+
+    // TODO According to @olle I should be returning a coercion function here.
+    fn subsumes(&mut self, ty1: Type, ty2: Type) -> Result<(), TypeError> {
+        match (ty1, ty2) {
+            (ty1, Type::Poly { vars, ty }) => {
+                let ty2 = self.instantiate(Type::Poly { vars, ty });
+                self.subsumes(ty1, ty2)
+            }
+            // TODO Skolemization
+            (ty1, ty2) => self.unify(ty1, ty2)
+        }
+    }
+
     fn check<B: HasIdent>(&mut self, expr: Expr<B>, ty: Type) -> Result<TypedValue, TypeError> {
-        Err(TypeError::CantInferMatch)
+        // TODO Lame for now
+        let typed_expr = self.infer(expr)?;
+        self.subsumes(typed_expr.ty, ty.clone())?;
+        Ok(TypedValue {
+            expr: typed_expr.expr,
+            ty,
+        })
     }
 
     fn check_application<B: HasIdent>(
@@ -406,6 +494,7 @@ impl TypeChecker {
         fun: TypedValue,
         arg: Expr<B>,
     ) -> Result<TypedValue, TypeError> {
+        // TODO There are more cases to cover here, reference the purs implementation
         let TypedValue {
             expr: fun,
             ty: ty_fun,
@@ -473,7 +562,7 @@ impl TypeChecker {
             Expr::Var(v) => {
                 let var = v.ident();
                 let ty_var = self.lookup_name(&var)?;
-                // TODO: instantiate
+                let ty_var = self.instantiate(ty_var);
                 Ok(TypedValue {
                     expr: Expr::Var(NewVar {
                         name: var,
@@ -490,15 +579,168 @@ impl TypeChecker {
                 expr: Expr::Literal(Literal::Bool(b)),
                 ty: Type::bool(),
             }),
-            _ => Err(TypeError::CantInferMatch), // App {func: Box<Expr<B>>, arg: Box<Expr<B>>,},
-                                                 // Lambda {binder: B, body: Box<Expr<B>>,},
-                                                 // Let {binder: B, expr: Box<Expr<B>>, body: Box<Expr<B>>,},
-                                                 // Var(B),
-                                                 // Literal(Literal),
-                                                 // Construction {dtor: Dtor, args: Vec<Expr<B>>,},
-                                                 // Match {expr: Box<Expr<B>>, cases: Vec<Case<B>>,},
-                                                 // Ann {expr: Box<Expr<B>>, ty: Type,},
-                                                 // Tuple(Box<Expr<B>>, Box<Expr<B>>),
+            Expr::Construction { dtor, args } => {
+                let (data_constructor, type_arguments) = self.lookup_dataconstructor(&dtor)?;
+                let fresh_vars: Vec<(String, Type)> = type_arguments
+                    .into_iter()
+                    .map(|arg| (arg, self.fresh_unknown()))
+                    .collect();
+                if args.len() != data_constructor.fields.len() {
+                    return Err(TypeError::WrongConstructorArity(
+                        dtor,
+                        args.len(),
+                        data_constructor.fields.len(),
+                    ));
+                }
+                let mut typed_args = vec![];
+                for (arg, field) in args.into_iter().zip(data_constructor.fields) {
+                    let typed_arg = self.check(
+                        arg,
+                        Type::from_bi_type(field).subst_many(fresh_vars.as_slice()),
+                    )?;
+                    typed_args.push(typed_arg.expr);
+                }
+                Ok(TypedValue {
+                    expr: Expr::Construction {
+                        dtor: dtor.clone(),
+                        args: typed_args,
+                    },
+                    ty: Type::Constructor {
+                        name: dtor.ty,
+                        arguments: fresh_vars.into_iter().map(|(_, fresh)| fresh).collect(),
+                    },
+                })
+            }
+            Expr::Match { expr, cases } => {
+                let typed_expr = self.infer(*expr)?;
+                let ty_res = self.fresh_unknown();
+                let mut typed_cases = vec![];
+                for case in cases {
+                    let binders = self.infer_pattern(
+                        &case.data_constructor,
+                        &case.binders,
+                        typed_expr.ty.clone(),
+                    )?;
+                    let body = case.expr;
+                    let typed_case = self.bind_names(binders.clone(), |tc| tc.infer(body))?;
+                    self.unify(ty_res.clone(), typed_case.ty)?;
+                    typed_cases.push(Case {
+                        data_constructor: case.data_constructor,
+                        binders: binders
+                            .into_iter()
+                            .map(|(name, ty)| NewVar { name, ty })
+                            .collect(),
+                        expr: typed_case.expr,
+                    });
+                }
+                Ok(TypedValue {
+                    expr: Expr::Match {
+                        expr: Box::new(typed_expr.expr),
+                        cases: typed_cases,
+                    },
+                    ty: ty_res,
+                })
+            }
+            Expr::Ann { expr, ty } => {
+                // TODO Reconstruct `Ann` once bi_types is gone
+                self.check(*expr, Type::from_bi_type(ty))
+            }
+            Expr::Tuple(_, _) => Err(TypeError::CantInferMatch),
+            // App {func: Box<Expr<B>>, arg: Box<Expr<B>>,},
+            // Lambda {binder: B, body: Box<Expr<B>>,},
+            // Let {binder: B, expr: Box<Expr<B>>, body: Box<Expr<B>>,},
+            // Var(B),
+            // Literal(Literal),
+            // Construction {dtor: Dtor, args: Vec<Expr<B>>,},
+            // Match {expr: Box<Expr<B>>, cases: Vec<Case<B>>,},
+            // Ann {expr: Box<Expr<B>>, ty: Type,},
+            // Tuple(Box<Expr<B>>, Box<Expr<B>>),
         }
+    }
+
+    pub fn infer_pattern<B>(
+        &mut self,
+        dtor: &Dtor,
+        binders: &[B],
+        ty: Type,
+    ) -> Result<Vec<(String, Type)>, TypeError>
+    where
+        B: HasIdent,
+    {
+        let (data_constructor, type_arguments) = self.lookup_dataconstructor(dtor)?;
+        let fresh_vars: Vec<(String, Type)> = type_arguments
+            .into_iter()
+            .map(|arg| (arg, self.fresh_unknown()))
+            .collect();
+        if binders.len() != data_constructor.fields.len() {
+            return Err(TypeError::WrongConstructorArity(
+                dtor.clone(),
+                binders.len(),
+                data_constructor.fields.len(),
+            ));
+        }
+        self.unify(
+            ty,
+            Type::Constructor {
+                name: dtor.ty.clone(),
+                arguments: fresh_vars.iter().map(|(_, fresh)| fresh.clone()).collect(),
+            },
+        )?;
+
+        Ok(binders
+            .into_iter()
+            .zip(data_constructor.fields)
+            .map(|(binder, ty)| {
+                (
+                    binder.ident(),
+                    Type::from_bi_type(ty).subst_many(&fresh_vars),
+                )
+            })
+            .collect())
+    }
+
+    pub fn infer_prog<B: HasIdent>(
+        &mut self,
+        prog: Vec<Declaration<B>>,
+    ) -> Result<Vec<(Declaration<NewVar>, Type)>, TypeError> {
+        // TODO setup initial context
+        self.state.context.insert(
+            "primadd".to_string(),
+            Type::Poly {
+                vars: vec![],
+                ty: Box::new(Type::int()),
+            },
+        );
+
+        let mut result = vec![];
+
+        for decl in prog {
+            match decl {
+                Declaration::Type(type_decl) => {
+                    self.add_type_declaration(type_decl.clone());
+                    result.push((Declaration::Type(type_decl), Type::int()));
+                }
+                Declaration::Value(ValueDeclaration { name, expr }) => {
+                    debug!(
+                        "Inferring declaration {}: \n=============================",
+                        name
+                    );
+                    let typed_expr = self.infer(expr)?;
+                    // TODO generalize
+                    self.state
+                        .context
+                        .insert(name.clone(), typed_expr.ty.clone());
+                    result.push((
+                        Declaration::Value(ValueDeclaration {
+                            name: name,
+                            expr: typed_expr.expr,
+                        }),
+                        typed_expr.ty,
+                    ));
+                }
+            }
+        }
+
+        Ok(result)
     }
 }
