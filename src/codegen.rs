@@ -1,6 +1,6 @@
 use crate::bi_types::Type;
 use crate::expr::{
-    Case, DataConstructor, Declaration, Dtor, Expr, Literal, TypeDeclaration, TypedExpr,
+    Case, DataConstructor, Declaration, Dtor, Expr, HasIdent, Literal, TypeDeclaration, TypedExpr,
     ValueDeclaration, Var,
 };
 use std::collections::HashMap;
@@ -94,7 +94,10 @@ impl Lowering {
             .ok_or_else(|| CodegenError::UnknownDataConstructor(dtor.clone()))
     }
 
-    pub fn lower(&mut self, prog: Vec<(Declaration<Var>, Type)>) -> Result<IR, CodegenError> {
+    pub fn lower<B: HasIdent + Clone, T>(
+        &mut self,
+        prog: Vec<(Declaration<B>, T)>,
+    ) -> Result<IR, CodegenError> {
         let mut globals = vec![];
         for (decl, _) in prog {
             match decl {
@@ -113,16 +116,16 @@ impl Lowering {
         })
     }
 
-    fn lower_decl(
+    fn lower_decl<B: HasIdent + Clone>(
         &mut self,
-        decl: ValueDeclaration<Var>,
+        decl: ValueDeclaration<B>,
     ) -> Result<(IRDeclaration, Vec<IRDeclaration>), CodegenError> {
         let (arguments, expr) = decl.expr.collapse_lambdas();
         let (lowered_expr, locals, globals) = self.lower_expr(expr)?;
         Ok((
             IRDeclaration {
                 name: decl.name,
-                arguments: arguments.into_iter().map(|v| v.name).collect(),
+                arguments: arguments.into_iter().map(|v| v.ident()).collect(),
                 expr: lowered_expr,
                 locals,
             },
@@ -130,14 +133,14 @@ impl Lowering {
         ))
     }
 
-    fn lower_expr(
+    fn lower_expr<B: HasIdent + Clone>(
         &mut self,
-        expr: TypedExpr,
+        expr: Expr<B>,
     ) -> Result<(IRExpression, Vec<String>, Vec<IRDeclaration>), CodegenError> {
         match expr {
             Expr::Ann { expr, .. } => self.lower_expr(*expr),
             Expr::Literal(lit) => Ok((IRExpression::Literal(lit), vec![], vec![])),
-            Expr::Var(v) => Ok((IRExpression::Var(v.name), vec![], vec![])),
+            Expr::Var(v) => Ok((IRExpression::Var(v.ident()), vec![], vec![])),
             Expr::Tuple { .. } => Err(CodegenError::NotImplemented(
                 "Can't lower tuples".to_string(),
             )),
@@ -190,7 +193,7 @@ impl Lowering {
                 let (lowered_body, locals, mut gs) = self.lower_expr(body)?;
                 let ir_decl = IRDeclaration {
                     name: fresh_name.clone(),
-                    arguments: binders.into_iter().map(|v| v.name).collect(),
+                    arguments: binders.into_iter().map(|v| v.ident()).collect(),
                     locals,
                     expr: lowered_body,
                 };
@@ -199,8 +202,8 @@ impl Lowering {
                 Ok((IRExpression::Var(fresh_name), vec![], gs))
             }
             Expr::Let { binder, expr, body } => {
-                let fresh_local = self.fresh_name(&binder.name);
-                let renamed_body = body.subst_var(&binder.name, &fresh_local);
+                let fresh_local = self.fresh_name(&binder.ident());
+                let renamed_body = body.subst_var(&binder.ident(), &fresh_local);
                 let mut locals = vec![fresh_local.clone()];
                 let (lowered_expr, ls, mut gs) = self.lower_expr(*expr)?;
                 let (lowered_body, ls_body, gs_body) = self.lower_expr(renamed_body)?;
@@ -237,12 +240,12 @@ impl Lowering {
                     expr,
                 } in cases
                 {
-                    let case_binders: Vec<(&str, &str)> = binders
+                    let case_binders: Vec<(String, &str)> = binders
                         .iter()
                         .zip(fresh_binders.iter())
-                        .map(|(v, fresh)| (v.name.as_str(), fresh.as_str()))
+                        .map(|(v, fresh)| (v.ident(), fresh.as_str()))
                         .collect();
-                    let renamed_expr = expr.subst_var_many(case_binders.clone());
+                    let renamed_expr = expr.subst_var_many_(case_binders.clone());
                     let (tag, arity) = self.find_data_constructor(&data_constructor)?;
                     assert_eq!(arity, case_binders.len());
                     let (lowered_expr, ls_case, gs_case) = self.lower_expr(renamed_expr)?;

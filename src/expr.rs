@@ -75,11 +75,15 @@ pub trait HasIdent {
     fn ident_with_ty(&self) -> String {
         self.ident()
     }
+    fn set_ident(self, new: String) -> Self;
 }
 
 impl HasIdent for String {
     fn ident(&self) -> String {
         self.clone()
+    }
+    fn set_ident(self, new: String) -> String {
+        new
     }
 }
 
@@ -97,6 +101,13 @@ impl HasIdent for Var {
     fn ident_with_ty(&self) -> String {
         format!("{} : {}", self.name, self.ty)
     }
+
+    fn set_ident(self, new: String) -> Var {
+        Var {
+            name: new,
+            ty: self.ty,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -112,6 +123,13 @@ impl HasIdent for NewVar {
 
     fn ident_with_ty(&self) -> String {
         format!("{} : {}", self.name, self.ty)
+    }
+
+    fn set_ident(self, new: String) -> NewVar {
+        NewVar {
+            name: new,
+            ty: self.ty,
+        }
     }
 }
 
@@ -176,21 +194,17 @@ impl<B> Case<B> {
     }
 }
 
-impl Case<Var> {
-    pub fn subst_var_mut(&mut self, var: &str, replacement: &str) {
-        if !self.binders.iter().any(|binder| var == binder.name) {
+impl<B> Case<B> {
+    pub fn subst_var_mut(&mut self, var: &str, replacement: &str)
+    where
+        B: HasIdent + Clone,
+    {
+        if !self.binders.iter().any(|binder| var == binder.ident()) {
             self.expr.subst_var_mut(var, replacement)
         }
     }
 }
 
-impl Case<NewVar> {
-    pub fn subst_var_mut(&mut self, var: &str, replacement: &str) {
-        if !self.binders.iter().any(|binder| var == binder.name) {
-            self.expr.subst_var_mut(var, replacement)
-        }
-    }
-}
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Dtor {
     pub ty: String,
@@ -558,101 +572,117 @@ impl<B> Expr<B> {
     }
 }
 
-impl TypedExpr {
-    pub fn subst_var_many(mut self, mappings: Vec<(&str, &str)>) -> TypedExpr {
+// impl TypedExpr {
+//     pub fn subst_var_many(mut self, mappings: Vec<(&str, &str)>) -> TypedExpr {
+//         for (var, replacement) in mappings {
+//             self.subst_var_mut(var, replacement);
+//         }
+//         self
+//     }
+
+//     pub fn subst_var(mut self, var: &str, replacement: &str) -> TypedExpr {
+//         self.subst_var_mut(var, replacement);
+//         self
+//     }
+
+//     pub fn subst_var_mut(&mut self, var: &str, replacement: &str) {
+//         match self {
+//             Expr::Var(v) => {
+//                 if var == v.name {
+//                     *self = Expr::Var(Var {
+//                         name: replacement.to_string(),
+//                         ty: v.ty.clone(),
+//                     })
+//                 }
+//             }
+//             Expr::Ann { expr, .. } => {
+//                 expr.subst_var_mut(var, replacement);
+//             }
+//             Expr::Lambda { binder, body } => {
+//                 if var != binder.name {
+//                     body.subst_var_mut(var, replacement);
+//                 }
+//             }
+//             Expr::Let { binder, expr, body } => {
+//                 expr.subst_var_mut(var, replacement);
+//                 if var != binder.name {
+//                     body.subst_var_mut(var, replacement);
+//                 }
+//             }
+//             Expr::App { func, arg } => {
+//                 func.subst_var_mut(&var, replacement);
+//                 arg.subst_var_mut(var, replacement);
+//             }
+//             Expr::Tuple(fst, snd) => {
+//                 fst.subst_var_mut(&var, replacement);
+//                 snd.subst_var_mut(var, replacement);
+//             }
+//             Expr::Construction { args, .. } => {
+//                 for arg in args {
+//                     arg.subst_var_mut(var, replacement);
+//                 }
+//             }
+//             Expr::Match { expr, cases } => {
+//                 expr.subst_var_mut(&var, replacement);
+//                 for case in cases {
+//                     case.subst_var_mut(var, replacement);
+//                 }
+//             }
+//             Expr::Literal(_) => {}
+//         }
+//     }
+// }
+
+impl<B> Expr<B> {
+    pub fn subst_var_many_(mut self, mappings: Vec<(String, &str)>) -> Expr<B>
+    where
+        B: HasIdent + Clone,
+    {
+        for (var, replacement) in mappings {
+            self.subst_var_mut(&var, replacement);
+        }
+        self
+    }
+
+    pub fn subst_var_many(mut self, mappings: Vec<(&str, &str)>) -> Expr<B>
+    where
+        B: HasIdent + Clone,
+    {
         for (var, replacement) in mappings {
             self.subst_var_mut(var, replacement);
         }
         self
     }
 
-    pub fn subst_var(mut self, var: &str, replacement: &str) -> TypedExpr {
+    pub fn subst_var(mut self, var: &str, replacement: &str) -> Expr<B>
+    where
+        B: HasIdent + Clone,
+    {
         self.subst_var_mut(var, replacement);
         self
     }
 
-    pub fn subst_var_mut(&mut self, var: &str, replacement: &str) {
+    pub fn subst_var_mut(&mut self, var: &str, replacement: &str)
+    where
+        B: HasIdent + Clone,
+    {
         match self {
             Expr::Var(v) => {
-                if var == v.name {
-                    *self = Expr::Var(Var {
-                        name: replacement.to_string(),
-                        ty: v.ty.clone(),
-                    })
+                if var == &v.ident() {
+                    *self = Expr::Var(v.clone().set_ident(replacement.to_string()))
                 }
             }
             Expr::Ann { expr, .. } => {
                 expr.subst_var_mut(var, replacement);
             }
             Expr::Lambda { binder, body } => {
-                if var != binder.name {
+                if var != &binder.ident() {
                     body.subst_var_mut(var, replacement);
                 }
             }
             Expr::Let { binder, expr, body } => {
                 expr.subst_var_mut(var, replacement);
-                if var != binder.name {
-                    body.subst_var_mut(var, replacement);
-                }
-            }
-            Expr::App { func, arg } => {
-                func.subst_var_mut(&var, replacement);
-                arg.subst_var_mut(var, replacement);
-            }
-            Expr::Tuple(fst, snd) => {
-                fst.subst_var_mut(&var, replacement);
-                snd.subst_var_mut(var, replacement);
-            }
-            Expr::Construction { args, .. } => {
-                for arg in args {
-                    arg.subst_var_mut(var, replacement);
-                }
-            }
-            Expr::Match { expr, cases } => {
-                expr.subst_var_mut(&var, replacement);
-                for case in cases {
-                    case.subst_var_mut(var, replacement);
-                }
-            }
-            Expr::Literal(_) => {}
-        }
-    }
-}
-
-impl NewTypedExpr {
-    pub fn subst_var_many(mut self, mappings: Vec<(&str, &str)>) -> NewTypedExpr {
-        for (var, replacement) in mappings {
-            self.subst_var_mut(var, replacement);
-        }
-        self
-    }
-
-    pub fn subst_var(mut self, var: &str, replacement: &str) -> NewTypedExpr {
-        self.subst_var_mut(var, replacement);
-        self
-    }
-
-    pub fn subst_var_mut(&mut self, var: &str, replacement: &str) {
-        match self {
-            Expr::Var(v) => {
-                if var == v.name {
-                    *self = Expr::Var(NewVar {
-                        name: replacement.to_string(),
-                        ty: v.ty.clone(),
-                    })
-                }
-            }
-            Expr::Ann { expr, .. } => {
-                expr.subst_var_mut(var, replacement);
-            }
-            Expr::Lambda { binder, body } => {
-                if var != binder.name {
-                    body.subst_var_mut(var, replacement);
-                }
-            }
-            Expr::Let { binder, expr, body } => {
-                expr.subst_var_mut(var, replacement);
-                if var != binder.name {
+                if var != &binder.ident() {
                     body.subst_var_mut(var, replacement);
                 }
             }
