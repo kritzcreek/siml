@@ -86,6 +86,7 @@ impl Lowering {
                 }),
                 arg: Box::new(self.lower_expr(*expr)),
             },
+            Expr::LetRec { binder, expr, body } => unreachable!("Do recursive bindings"),
             Expr::Var(s) => match self.tag_for_constructor(s.ident()) {
                 None => Term::Var(s.ident()),
                 Some(tag) => Term::Pack {

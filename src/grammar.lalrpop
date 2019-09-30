@@ -12,6 +12,7 @@ extern {
         "bool_literal" => Token::BooleanLiteral(<bool>),
         "forall" => Token::Forall,
         "let" => Token::Let,
+        "letrec" => Token::LetRec,
         "in" => Token::In,
         "match" => Token::Match,
         "type" => Token::Type,
@@ -58,6 +59,8 @@ pub Expr: ParserExpr = {
         Expr::Lambda { binder: binder.to_string(), body: Box::new(body) },
     "let" <binder: "identifier"> "=" <expr: Expr> "in" <body: Expr> =>
         Expr::Let { binder: binder.to_string(), expr: Box::new(expr), body: Box::new(body) },
+    "letrec" <binder: "identifier"> "=" <expr: Expr> "in" <body: Expr> =>
+        Expr::LetRec { binder: binder.to_string(), expr: Box::new(expr), body: Box::new(body) },
     "match" <expr: Expr> "{" <cases: CommaSep<Case>> "}" =>
         Expr::Match { expr: Box::new(expr), cases },
     <function: ExprAtom> <arguments: ExprAtom+> => {

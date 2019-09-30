@@ -235,6 +235,11 @@ pub enum Expr<B> {
         expr: Box<Expr<B>>,
         body: Box<Expr<B>>,
     },
+    LetRec {
+        binder: B,
+        expr: Box<Expr<B>>,
+        body: Box<Expr<B>>,
+    },
     Var(B),
     Literal(Literal),
     Tuple(Box<Expr<B>>, Box<Expr<B>>),
@@ -274,6 +279,11 @@ impl<B> Expr<B> {
                 body: Box::new(body.map(f)),
             },
             Expr::Let { binder, expr, body } => Expr::Let {
+                binder: f(binder),
+                expr: Box::new(expr.map(f)),
+                body: Box::new(body.map(f)),
+            },
+            Expr::LetRec { binder, expr, body } => Expr::LetRec {
                 binder: f(binder),
                 expr: Box::new(expr.map(f)),
                 body: Box::new(body.map(f)),
@@ -326,6 +336,34 @@ impl<B> Expr<B> {
             }
             Expr::Let { binder, expr, body } => {
                 let inner = Doc::text("let")
+                    .append(Doc::space())
+                    .append(
+                        Doc::text(binder.ident_with_ty())
+                            .append(Doc::space())
+                            .append(Doc::text("="))
+                            .group()
+                            .append(Doc::space())
+                            .append(
+                                expr.to_doc()
+                                    .append(Doc::space())
+                                    .append(Doc::text("in"))
+                                    .group(),
+                            )
+                            .nest(2)
+                            .group(),
+                    )
+                    .nest(2)
+                    .group()
+                    .append(Doc::space())
+                    .append(body.to_doc_inner(0));
+                if depth > 0 {
+                    Doc::text("(").append(inner).append(Doc::text(")")).group()
+                } else {
+                    inner
+                }
+            }
+            Expr::LetRec { binder, expr, body } => {
+                let inner = Doc::text("letrec")
                     .append(Doc::space())
                     .append(
                         Doc::text(binder.ident_with_ty())
@@ -446,6 +484,12 @@ impl<B> Expr<B> {
                     body.subst_mut(var, replacement);
                 }
             }
+            Expr::LetRec { binder, expr, body } => {
+                if var != binder.ident() {
+                    expr.subst_mut(var, replacement);
+                    body.subst_mut(var, replacement);
+                }
+            }
             Expr::App { func, arg } => {
                 func.subst_mut(var, replacement);
                 arg.subst_mut(var, replacement);
@@ -531,6 +575,13 @@ impl<B> Expr<B> {
                 res.extend(body_vars);
                 res
             }
+            Expr::LetRec { binder, expr, body } => {
+                let mut res = expr.free_vars();
+                let body_vars = body.free_vars();
+                res.extend(body_vars);
+                res.remove(&binder.ident());
+                res
+            }
             Expr::App { func, arg } => func.free_vars().union(&arg.free_vars()).cloned().collect(),
             Expr::Tuple(fst, snd) => fst.free_vars().union(&snd.free_vars()).cloned().collect(),
             Expr::Literal(_) => HashSet::new(),
@@ -571,67 +622,6 @@ impl<B> Expr<B> {
         Expr::Tuple(Box::new(fst), Box::new(snd))
     }
 }
-
-// impl TypedExpr {
-//     pub fn subst_var_many(mut self, mappings: Vec<(&str, &str)>) -> TypedExpr {
-//         for (var, replacement) in mappings {
-//             self.subst_var_mut(var, replacement);
-//         }
-//         self
-//     }
-
-//     pub fn subst_var(mut self, var: &str, replacement: &str) -> TypedExpr {
-//         self.subst_var_mut(var, replacement);
-//         self
-//     }
-
-//     pub fn subst_var_mut(&mut self, var: &str, replacement: &str) {
-//         match self {
-//             Expr::Var(v) => {
-//                 if var == v.name {
-//                     *self = Expr::Var(Var {
-//                         name: replacement.to_string(),
-//                         ty: v.ty.clone(),
-//                     })
-//                 }
-//             }
-//             Expr::Ann { expr, .. } => {
-//                 expr.subst_var_mut(var, replacement);
-//             }
-//             Expr::Lambda { binder, body } => {
-//                 if var != binder.name {
-//                     body.subst_var_mut(var, replacement);
-//                 }
-//             }
-//             Expr::Let { binder, expr, body } => {
-//                 expr.subst_var_mut(var, replacement);
-//                 if var != binder.name {
-//                     body.subst_var_mut(var, replacement);
-//                 }
-//             }
-//             Expr::App { func, arg } => {
-//                 func.subst_var_mut(&var, replacement);
-//                 arg.subst_var_mut(var, replacement);
-//             }
-//             Expr::Tuple(fst, snd) => {
-//                 fst.subst_var_mut(&var, replacement);
-//                 snd.subst_var_mut(var, replacement);
-//             }
-//             Expr::Construction { args, .. } => {
-//                 for arg in args {
-//                     arg.subst_var_mut(var, replacement);
-//                 }
-//             }
-//             Expr::Match { expr, cases } => {
-//                 expr.subst_var_mut(&var, replacement);
-//                 for case in cases {
-//                     case.subst_var_mut(var, replacement);
-//                 }
-//             }
-//             Expr::Literal(_) => {}
-//         }
-//     }
-// }
 
 impl<B> Expr<B> {
     pub fn subst_var_many_(mut self, mappings: Vec<(String, &str)>) -> Expr<B>
@@ -683,6 +673,12 @@ impl<B> Expr<B> {
             Expr::Let { binder, expr, body } => {
                 expr.subst_var_mut(var, replacement);
                 if var != &binder.ident() {
+                    body.subst_var_mut(var, replacement);
+                }
+            }
+            Expr::LetRec { binder, expr, body } => {
+                if var != &binder.ident() {
+                    expr.subst_var_mut(var, replacement);
                     body.subst_var_mut(var, replacement);
                 }
             }

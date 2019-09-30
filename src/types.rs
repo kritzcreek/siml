@@ -475,7 +475,7 @@ impl TypeChecker {
                 self.subsumes(ty1, ty2)
             }
             // TODO Skolemization
-            (ty1, ty2) => self.unify(ty1, ty2)
+            (ty1, ty2) => self.unify(ty1, ty2),
         }
     }
 
@@ -544,6 +544,23 @@ impl TypeChecker {
                 })
             }
             Expr::Let { binder, expr, body } => {
+                let typed_expr = self.infer(*expr)?;
+                let typed_body =
+                    self.bind_name(binder.ident(), typed_expr.ty.clone(), |tc| tc.infer(*body))?;
+                Ok(TypedValue {
+                    expr: Expr::Let {
+                        binder: NewVar {
+                            name: binder.ident(),
+                            ty: typed_expr.ty,
+                        },
+                        expr: Box::new(typed_expr.expr),
+                        body: Box::new(typed_body.expr),
+                    },
+                    ty: typed_body.ty,
+                })
+            }
+            Expr::LetRec { binder, expr, body } => {
+                // TODO
                 let typed_expr = self.infer(*expr)?;
                 let typed_body =
                     self.bind_name(binder.ident(), typed_expr.ty.clone(), |tc| tc.infer(*body))?;
@@ -646,15 +663,6 @@ impl TypeChecker {
                 self.check(*expr, Type::from_bi_type(ty))
             }
             Expr::Tuple(_, _) => Err(TypeError::CantInferMatch),
-            // App {func: Box<Expr<B>>, arg: Box<Expr<B>>,},
-            // Lambda {binder: B, body: Box<Expr<B>>,},
-            // Let {binder: B, expr: Box<Expr<B>>, body: Box<Expr<B>>,},
-            // Var(B),
-            // Literal(Literal),
-            // Construction {dtor: Dtor, args: Vec<Expr<B>>,},
-            // Match {expr: Box<Expr<B>>, cases: Vec<Case<B>>,},
-            // Ann {expr: Box<Expr<B>>, ty: Type,},
-            // Tuple(Box<Expr<B>>, Box<Expr<B>>),
         }
     }
 

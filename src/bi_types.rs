@@ -1274,6 +1274,7 @@ impl TypeChecker {
                     },
                 ))
             }
+            Expr::LetRec { binder, expr, body } => unreachable!("recursive"),
             Expr::Lambda { binder, body } => {
                 // ->l=>
                 let mut tmp_ctx = ctx;
