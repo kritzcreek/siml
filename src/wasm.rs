@@ -1,5 +1,6 @@
 extern crate wabt;
 extern crate wasmi;
+use std::io::Write;
 use wasmi::{ImportsBuilder, ModuleInstance, NopExternals};
 
 pub fn run_wasm(prog: String) -> Result<Option<wasmi::RuntimeValue>, wasmi::Error> {
@@ -17,6 +18,23 @@ pub fn run_wasm(prog: String) -> Result<Option<wasmi::RuntimeValue>, wasmi::Erro
     instance
         .assert_no_start()
         .invoke_export("main", &[], &mut NopExternals)
+}
+
+pub fn pretty_wat(input: &str) -> String {
+    use std::fs;
+    use std::process::{Command, Stdio};
+    fs::write("tmp.wat", input.as_bytes()).unwrap();
+    let child = Command::new("wat-desugar.exe")
+        .arg("tmp.wat")
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to start wat desugar process");
+
+    let output = child.wait_with_output().unwrap();
+
+    fs::remove_file("tmp.wat").unwrap();
+
+    format!("{}", std::str::from_utf8(&output.stdout).unwrap())
 }
 
 pub fn pretty_result(res: Result<Option<wasmi::RuntimeValue>, wasmi::Error>) -> String {

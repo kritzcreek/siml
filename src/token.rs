@@ -21,6 +21,7 @@ pub enum Token {
     Forall,
     Match,
     Let,
+    LetRec,
     In,
     Type,
     Ident(String),
@@ -74,6 +75,7 @@ fn is_ident_start(c: char) -> bool {
 fn is_ident_member(c: char) -> bool {
     match c {
         'a'..='z' => true,
+        'A'..='Z' => true,
         '0'..='9' => true,
         '_' => true,
         _ => false,
@@ -144,6 +146,7 @@ impl<'input> Iterator for Lexer<'input> {
                     "false" => Some(Token::BooleanLiteral(false)),
                     "forall" => Some(Token::Forall),
                     "let" => Some(Token::Let),
+                    "letrec" => Some(Token::LetRec),
                     "in" => Some(Token::In),
                     "match" => Some(Token::Match),
                     "type" => Some(Token::Type),

@@ -133,6 +133,28 @@ impl Lowering {
         ))
     }
 
+    fn lower_lambda<B: HasIdent + Clone>(
+        &mut self,
+        expr: Expr<B>,
+        is_recursive: Option<&str>,
+    ) -> Result<(IRExpression, Vec<String>, Vec<IRDeclaration>), CodegenError> {
+        let (binders, mut body) = expr.collapse_lambdas();
+        let fresh_name = self.fresh_top_name();
+        if let Some(recursive_binder) = is_recursive {
+            body.subst_var_mut(recursive_binder, &fresh_name);
+        }
+        let (lowered_body, locals, mut gs) = self.lower_expr(body)?;
+        let ir_decl = IRDeclaration {
+            name: fresh_name.clone(),
+            arguments: binders.into_iter().map(|v| v.ident()).collect(),
+            locals,
+            expr: lowered_body,
+        };
+
+        gs.push(ir_decl);
+        Ok((IRExpression::Var(fresh_name), vec![], gs))
+    }
+
     fn lower_expr<B: HasIdent + Clone>(
         &mut self,
         expr: Expr<B>,
@@ -187,25 +209,36 @@ impl Lowering {
                     gs,
                 ))
             }
-            Expr::Lambda { .. } => {
-                let (binders, body) = expr.collapse_lambdas();
-                let fresh_name = self.fresh_top_name();
-                let (lowered_body, locals, mut gs) = self.lower_expr(body)?;
-                let ir_decl = IRDeclaration {
-                    name: fresh_name.clone(),
-                    arguments: binders.into_iter().map(|v| v.ident()).collect(),
-                    locals,
-                    expr: lowered_body,
-                };
-
-                gs.push(ir_decl);
-                Ok((IRExpression::Var(fresh_name), vec![], gs))
-            }
+            Expr::Lambda { .. } => self.lower_lambda(expr, None),
             Expr::Let { binder, expr, body } => {
                 let fresh_local = self.fresh_name(&binder.ident());
                 let renamed_body = body.subst_var(&binder.ident(), &fresh_local);
                 let mut locals = vec![fresh_local.clone()];
                 let (lowered_expr, ls, mut gs) = self.lower_expr(*expr)?;
+                let (lowered_body, ls_body, gs_body) = self.lower_expr(renamed_body)?;
+                locals.extend(ls);
+                locals.extend(ls_body);
+                gs.extend(gs_body);
+                Ok((
+                    IRExpression::Let {
+                        binder: fresh_local,
+                        expr: Box::new(lowered_expr),
+                        body: Box::new(lowered_body),
+                    },
+                    locals,
+                    gs,
+                ))
+            }
+            Expr::LetRec { binder, expr, body } => {
+                // TODO actually do the recursive binding thing
+                let fresh_local = self.fresh_name(&binder.ident());
+                let renamed_body = body.subst_var(&binder.ident(), &fresh_local);
+                let mut locals = vec![fresh_local.clone()];
+                let (lowered_expr, ls, mut gs) = if let Expr::Lambda { .. } = *expr {
+                    self.lower_lambda(*expr, Some(&binder.ident()))?
+                } else {
+                    self.lower_expr(*expr)?
+                };
                 let (lowered_body, ls_body, gs_body) = self.lower_expr(renamed_body)?;
                 locals.extend(ls);
                 locals.extend(ls_body);
