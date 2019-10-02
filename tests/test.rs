@@ -23,7 +23,8 @@ fn test_passing() {
         let path = entry.unwrap().path();
         if path.is_file() {
             let backend = backend_from_path(&path);
-            let _ = run_program(&fs::read_to_string(path).unwrap(), backend).unwrap();
+            let res = run_program(&fs::read_to_string(path.clone()).unwrap(), backend).unwrap();
+            println!("Running: {} => {}", path.display(), res);
         }
     }
 }

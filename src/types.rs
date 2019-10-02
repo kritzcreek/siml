@@ -560,12 +560,15 @@ impl TypeChecker {
                 })
             }
             Expr::LetRec { binder, expr, body } => {
-                // TODO
-                let typed_expr = self.infer(*expr)?;
+                let fresh_binder = self.fresh_unknown();
+                let typed_expr = self.bind_name(binder.ident(), fresh_binder.clone(), |tc|
+                    tc.infer(*expr)
+                )?;
+                self.unify(fresh_binder.clone(), typed_expr.ty.clone())?;
                 let typed_body =
                     self.bind_name(binder.ident(), typed_expr.ty.clone(), |tc| tc.infer(*body))?;
                 Ok(TypedValue {
-                    expr: Expr::Let {
+                    expr: Expr::LetRec {
                         binder: NewVar {
                             name: binder.ident(),
                             ty: typed_expr.ty,

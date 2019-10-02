@@ -230,15 +230,15 @@ impl Lowering {
                 ))
             }
             Expr::LetRec { binder, expr, body } => {
-                // TODO actually do the recursive binding thing
                 let fresh_local = self.fresh_name(&binder.ident());
-                let renamed_body = body.subst_var(&binder.ident(), &fresh_local);
                 let mut locals = vec![fresh_local.clone()];
                 let (lowered_expr, ls, mut gs) = if let Expr::Lambda { .. } = *expr {
+                    // We only allow recursive bindings if the thing being bound is a lambda
                     self.lower_lambda(*expr, Some(&binder.ident()))?
                 } else {
                     self.lower_expr(*expr)?
                 };
+                let renamed_body = body.subst_var(&binder.ident(), &fresh_local);
                 let (lowered_body, ls_body, gs_body) = self.lower_expr(renamed_body)?;
                 locals.extend(ls);
                 locals.extend(ls_body);
@@ -272,27 +272,27 @@ impl Lowering {
                     binders,
                     expr,
                 } in cases
-                {
-                    let case_binders: Vec<(String, &str)> = binders
-                        .iter()
-                        .zip(fresh_binders.iter())
-                        .map(|(v, fresh)| (v.ident(), fresh.as_str()))
-                        .collect();
-                    let renamed_expr = expr.subst_var_many_(case_binders.clone());
-                    let (tag, arity) = self.find_data_constructor(&data_constructor)?;
-                    assert_eq!(arity, case_binders.len());
-                    let (lowered_expr, ls_case, gs_case) = self.lower_expr(renamed_expr)?;
-                    ls.extend(ls_case);
-                    gs.extend(gs_case);
-                    lowered_cases.push(IRCase {
-                        tag: tag as u32,
-                        binders: case_binders
-                            .into_iter()
-                            .map(|(_, new)| new.to_string())
-                            .collect(),
-                        expr: lowered_expr,
-                    });
-                }
+                    {
+                        let case_binders: Vec<(String, &str)> = binders
+                            .iter()
+                            .zip(fresh_binders.iter())
+                            .map(|(v, fresh)| (v.ident(), fresh.as_str()))
+                            .collect();
+                        let renamed_expr = expr.subst_var_many_(case_binders.clone());
+                        let (tag, arity) = self.find_data_constructor(&data_constructor)?;
+                        assert_eq!(arity, case_binders.len());
+                        let (lowered_expr, ls_case, gs_case) = self.lower_expr(renamed_expr)?;
+                        ls.extend(ls_case);
+                        gs.extend(gs_case);
+                        lowered_cases.push(IRCase {
+                            tag: tag as u32,
+                            binders: case_binders
+                                .into_iter()
+                                .map(|(_, new)| new.to_string())
+                                .collect(),
+                            expr: lowered_expr,
+                        });
+                    }
                 Ok((
                     IRExpression::Match {
                         expr_local,
@@ -523,6 +523,28 @@ const CLOSURE_RTS: &str = r#"
         (get_local $code_pointer))
        (get_local $closure_start))
 
+ (func $copy_closure (param $closure i32) (result i32)
+       (local $new_closure i32)
+       (local $size i32)
+       (local $arity i32)
+       (local $x i32)
+       (set_local $arity (i32.load (get_local $closure)))
+       (set_local $size
+                  (i32.add (i32.const 12)
+                           (i32.mul (i32.const 4)
+                                    (get_local $arity))))
+       (set_local $new_closure (call $allocate (get_local $size)))
+       (set_local $x (i32.const 0))
+       (block
+        (loop
+         (br_if 1 (i32.ge_s (get_local $x) (get_local $size)))
+         (i32.store
+          (i32.add (get_local $x) (get_local $new_closure))
+          (i32.load (i32.add (get_local $x) (get_local $closure))))
+         (set_local $x (i32.add (i32.const 4) (get_local $x)))
+         (br 0)))
+       (get_local $new_closure))
+
  (type $i32_to_i32 (func (param i32) (result i32)))
  (func $apply (param $closure i32) (param $arg i32) (result i32)
        (local $arity i32)
@@ -530,6 +552,8 @@ const CLOSURE_RTS: &str = r#"
        (local $arg_start i32)
        (local $next_arg i32)
        (local $code_pointer_offset i32)
+
+       (set_local $closure (call $copy_closure (get_local $closure)))
 
        (set_local $arity (i32.load (get_local $closure)))
        (set_local $applied (i32.load (i32.add (get_local $closure) (i32.const 4))))
@@ -543,7 +567,6 @@ const CLOSURE_RTS: &str = r#"
                                     (i32.const 4))))
 
        ;; write the supplied argument into its spot
-       ;; TODO: We should be copying the closure here
        (i32.store (get_local $next_arg) (get_local $arg))
        (if (result i32)
            (i32.eq (get_local $arity) (i32.add (get_local $applied) (i32.const 1)))

@@ -29,7 +29,7 @@ pub fn run_program(input: &str, backend: Backend) -> Result<String, PipelineErro
         .parse(lexer)
         .map_err(|err| PipelineError::ParseError(format!("Parse failure: {:?}", err)))?;
     // For when running without a type checker
-    let tys: Vec<(Declaration<String>, u32)> = prog.into_iter().map(|d| (d, 42)).collect();
+//    let tys: Vec<(Declaration<String>, u32)> = prog.into_iter().map(|d| (d, 42)).collect();
     // For when running the bidirectional type checker
 //     let mut type_checker = TypeChecker::new();
 //     let tys = type_checker
@@ -37,11 +37,10 @@ pub fn run_program(input: &str, backend: Backend) -> Result<String, PipelineErro
 //         .map_err(PipelineError::TypeError)?;
 
     // For when running the unification based type checker
-//    let mut type_checker = types::TypeChecker::new();
-//    let tys = type_checker
-//        .infer_prog(prog)
-//        .map_err(PipelineError::NewTypeError)?;
-
+    let mut type_checker = types::TypeChecker::new();
+    let tys = type_checker
+        .infer_prog(prog)
+        .map_err(PipelineError::NewTypeError)?;
 
     for (decl, ty) in tys.iter() {
         if let Declaration::Value(vd) = decl {
@@ -59,7 +58,7 @@ pub fn run_program(input: &str, backend: Backend) -> Result<String, PipelineErro
                 .lower(tys)
                 .map_err(PipelineError::CodegenError)?;
             let prog = Codegen::new().codegen(lowered);
-            println!("{}", wasm::pretty_wat(&prog));
+//            info!("{}", wasm::pretty_wat(&prog));
             let res =
                 wasm::run_wasm(prog).map_err(|err| PipelineError::WasmError(format!("{}", err)))?;
             Ok(format!("{:?}", res))
