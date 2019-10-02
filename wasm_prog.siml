@@ -7,22 +7,32 @@ type List<a> {
 }
 
 let map : forall a b. (a -> b) -> List<a> -> List<b> =
-  letrec go = \f. \xs. match xs {
+  letrec map = \f. \xs. match xs {
     List::Nil() => List::Nil(),
-    List::Cons(x, xs) => List::Cons(f x, go f xs),
+    List::Cons(x, xs) => List::Cons(f x, map f xs),
   } in
-  go;
+  map;
 
-let head : forall a. List<a> -> a =
-  \l. match l {
-    List::Cons(x, xs) => x
-  };
+let foldr : forall a b. (a -> b -> a) -> a -> List<b> -> a =
+  letrec foldr = \f. \acc. \xs. match xs {
+    List::Nil() => acc,
+    List::Cons(h, t) => foldr f (f acc h) t
+  } in
+  foldr;
 
-let tail : forall a. List<a> -> List<a> =
-  \l. match l {
-    List::Cons(x, xs) => xs
-  };
+let foldl : forall a b. (a -> b -> b) -> b -> List<a> -> b =
+  letrec foldl = \f. \acc. \xs. match xs {
+    List::Nil() => acc,
+    List::Cons(h, t) => f h (foldl f acc t)
+  } in
+  foldl;
+
+let reverse : forall a. List<a> -> List<a> =
+  foldr (\xs. \x. List::Cons(x, xs)) List::Nil();
+
+let list_concat : forall a. List<a> -> List<a> -> List<a> =
+  \xs. \ys. foldl (\x. \acc. List::Cons(x, acc)) ys xs;
 
 let main : Int =
   let xs = List::Cons(2, List::Cons(20, List::Nil())) in
-  head (tail (map (add 2) xs));
+  foldr add 0 List::Cons(1, List::Cons(4, List::Nil()));
