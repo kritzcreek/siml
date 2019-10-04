@@ -6,11 +6,13 @@ use crate::term::{EvalError, Term};
 use crate::token;
 use crate::types;
 use crate::wasm;
+use std::path::Path;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Backend {
+pub enum Backend<'a> {
     Term,
-    Wasm,
+    WasmRun,
+    Wasm(&'a Path),
 }
 
 #[derive(Debug)]
@@ -29,12 +31,12 @@ pub fn run_program(input: &str, backend: Backend) -> Result<String, PipelineErro
         .parse(lexer)
         .map_err(|err| PipelineError::ParseError(format!("Parse failure: {:?}", err)))?;
     // For when running without a type checker
-//    let tys: Vec<(Declaration<String>, u32)> = prog.into_iter().map(|d| (d, 42)).collect();
+    // let tys: Vec<(Declaration<String>, u32)> = prog.into_iter().map(|d| (d, 42)).collect();
     // For when running the bidirectional type checker
-//     let mut type_checker = TypeChecker::new();
-//     let tys = type_checker
-//         .synth_prog(prog.clone())
-//         .map_err(PipelineError::TypeError)?;
+    // let mut type_checker = TypeChecker::new();
+    // let tys = type_checker
+    //     .synth_prog(prog.clone())
+    //     .map_err(PipelineError::TypeError)?;
 
     // For when running the unification based type checker
     let mut type_checker = types::TypeChecker::new();
@@ -53,15 +55,23 @@ pub fn run_program(input: &str, backend: Backend) -> Result<String, PipelineErro
                 .map_err(PipelineError::EvalError)?;
             Ok(format!("{}", res))
         }
-        Backend::Wasm => {
+        Backend::WasmRun => {
             let lowered = Lowering::new()
                 .lower(tys)
                 .map_err(PipelineError::CodegenError)?;
             let prog = Codegen::new().codegen(lowered);
-//            info!("{}", wasm::pretty_wat(&prog));
+            // info!("{}", wasm::pretty_wat(&prog));
             let res =
                 wasm::run_wasm(prog).map_err(|err| PipelineError::WasmError(format!("{}", err)))?;
             Ok(format!("{:?}", res))
+        }
+        Backend::Wasm(path) => {
+            let lowered = Lowering::new()
+                .lower(tys)
+                .map_err(PipelineError::CodegenError)?;
+            let prog = Codegen::new().codegen(lowered);
+            wasm::output_wasm(prog, path);
+            Ok(format!("Created wasm at: {}", path.display()))
         }
     }
 }

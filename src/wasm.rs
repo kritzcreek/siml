@@ -1,6 +1,7 @@
 extern crate wabt;
 extern crate wasmi;
-use std::io::Write;
+use std::fs;
+use std::path::Path;
 use wasmi::{ImportsBuilder, ModuleInstance, NopExternals};
 
 pub fn run_wasm(prog: String) -> Result<Option<wasmi::RuntimeValue>, wasmi::Error> {
@@ -20,8 +21,16 @@ pub fn run_wasm(prog: String) -> Result<Option<wasmi::RuntimeValue>, wasmi::Erro
         .invoke_export("main", &[], &mut NopExternals)
 }
 
+pub fn output_wasm(prog: String, path: &Path) {
+    let wasm_binary = wabt::Wat2Wasm::new()
+        .canonicalize_lebs(false)
+        .write_debug_names(true)
+        .convert(prog)
+        .unwrap();
+    fs::write(path, wasm_binary.as_ref()).unwrap()
+}
+
 pub fn pretty_wat(input: &str) -> String {
-    use std::fs;
     use std::process::{Command, Stdio};
     fs::write("tmp.wat", input.as_bytes()).unwrap();
     let child = Command::new("wat-desugar.exe")

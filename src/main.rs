@@ -72,7 +72,7 @@ fn run_file() {
 fn run_wasm_file() {
     let source_file =
         fs::read_to_string("wasm_prog.siml").expect("Failed to read the source file.");
-    let res = pipeline::run_program(&source_file, pipeline::Backend::Wasm);
+    let res = pipeline::run_program(&source_file, pipeline::Backend::WasmRun);
     println!("{:?}", res)
 }
 

@@ -1,7 +1,7 @@
 use crate::bi_types::Type;
 use crate::expr::{
-    Case, DataConstructor, Declaration, Dtor, Expr, HasIdent, Literal, TypeDeclaration, TypedExpr,
-    ValueDeclaration, Var,
+    Case, DataConstructor, Declaration, Dtor, Expr, HasIdent, Literal, TypeDeclaration,
+    ValueDeclaration,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -272,27 +272,27 @@ impl Lowering {
                     binders,
                     expr,
                 } in cases
-                    {
-                        let case_binders: Vec<(String, &str)> = binders
-                            .iter()
-                            .zip(fresh_binders.iter())
-                            .map(|(v, fresh)| (v.ident(), fresh.as_str()))
-                            .collect();
-                        let renamed_expr = expr.subst_var_many_(case_binders.clone());
-                        let (tag, arity) = self.find_data_constructor(&data_constructor)?;
-                        assert_eq!(arity, case_binders.len());
-                        let (lowered_expr, ls_case, gs_case) = self.lower_expr(renamed_expr)?;
-                        ls.extend(ls_case);
-                        gs.extend(gs_case);
-                        lowered_cases.push(IRCase {
-                            tag: tag as u32,
-                            binders: case_binders
-                                .into_iter()
-                                .map(|(_, new)| new.to_string())
-                                .collect(),
-                            expr: lowered_expr,
-                        });
-                    }
+                {
+                    let case_binders: Vec<(String, &str)> = binders
+                        .iter()
+                        .zip(fresh_binders.iter())
+                        .map(|(v, fresh)| (v.ident(), fresh.as_str()))
+                        .collect();
+                    let renamed_expr = expr.subst_var_many_(case_binders.clone());
+                    let (tag, arity) = self.find_data_constructor(&data_constructor)?;
+                    assert_eq!(arity, case_binders.len());
+                    let (lowered_expr, ls_case, gs_case) = self.lower_expr(renamed_expr)?;
+                    ls.extend(ls_case);
+                    gs.extend(gs_case);
+                    lowered_cases.push(IRCase {
+                        tag: tag as u32,
+                        binders: case_binders
+                            .into_iter()
+                            .map(|(_, new)| new.to_string())
+                            .collect(),
+                        expr: lowered_expr,
+                    });
+                }
                 Ok((
                     IRExpression::Match {
                         expr_local,

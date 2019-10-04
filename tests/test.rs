@@ -11,7 +11,7 @@ fn backend_from_path(path: &PathBuf) -> Backend {
         .unwrap()
         .ends_with("wasm")
     {
-        Backend::Wasm
+        Backend::WasmRun
     } else {
         Backend::Term
     }
